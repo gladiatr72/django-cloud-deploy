@@ -23,3 +23,12 @@ jobs:
       - run:
           command: |
             nox -f django_cloud_deploy/nox.py -s lint
+
+workflows:
+  version: 2
+  unit_test:
+    jobs:
+      - unit-test
+  lint:
+    jobs:
+      - lint
