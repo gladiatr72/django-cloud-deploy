@@ -24,8 +24,8 @@ jobs:
             nox -f django_cloud_deploy/nox.py -s lint
   integration-test:
     docker:
-      - image: google/cloud-sdk
       - image: googleapis/nox:0.18.2
+      - image: google/cloud-sdk
 
     steps:
       - checkout
