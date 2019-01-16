@@ -30,7 +30,7 @@ jobs:
       - checkout
       - run:
           command: |
-            sudo python3 -m pip install --upgrade nox-automation
+            python3 -m pip install --upgrade nox-automation
             if [ -n "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
               openssl aes-256-cbc -d -a -k "$GOOGLE_CREDENTIALS_PASSPHRASE" \
                   -in credentials.json.enc \
