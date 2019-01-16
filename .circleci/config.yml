@@ -4,6 +4,18 @@
 #
 version: 2
 jobs:
+  decrypt-credentials:
+    steps:
+      - run:
+          name: Decrypt credentials
+          command: |
+            if [ -n "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
+              openssl aes-256-cbc -d -a -k "$GOOGLE_CREDENTIALS_PASSPHRASE" \
+                  -in credentials.json.enc \
+                  -out $GOOGLE_APPLICATION_CREDENTIALS
+            else
+              echo "No credentials. System tests will not run."
+            fi
   unit-test:
     docker:
       - image: googleapis/nox:0.18.2
@@ -13,7 +25,6 @@ jobs:
       - run:
           command: |
             nox -f django_cloud_deploy/nox.py -s unit_test
-
   lint:
     docker:
       - image: googleapis/nox:0.18.2
@@ -23,6 +34,15 @@ jobs:
       - run:
           command: |
             nox -f django_cloud_deploy/nox.py -s lint
+  integration-test:
+    docker:
+      - image: googleapis/nox:0.18.2
+
+    steps:
+      - checkout
+      - run:
+          command: |
+            nox -f django_cloud_deploy/nox.py -s lint  
 
 workflows:
   version: 2
@@ -32,3 +52,7 @@ workflows:
   lint:
     jobs:
       - lint
+  integration_test:
+    jobs:
+      - decrypt-credentials
+      - integration-test
