@@ -24,18 +24,19 @@ jobs:
             nox -f django_cloud_deploy/nox.py -s lint
   integration-test:
     docker:
-      - image: googleapis/nox:0.18.2
+      - image: google/cloud-sdk
 
     steps:
       - checkout
       - run:
           command: |
+            sudo python3 -m pip install --upgrade nox-automation
             if [ -n "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
               openssl aes-256-cbc -d -a -k "$GOOGLE_CREDENTIALS_PASSPHRASE" \
                   -in credentials.json.enc \
                   -out $GOOGLE_APPLICATION_CREDENTIALS
             else
-              echo "No credentials. System tests will not run."
+              echo "No credentials. Integration tests will not run."
             fi
             nox -f django_cloud_deploy/nox.py -s integration_test  
 
