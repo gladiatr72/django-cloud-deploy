@@ -31,7 +31,6 @@ jobs:
       - run:
           command: |
             sudo python3 -m pip install --upgrade nox-automation
-            source .circleci/install_gcloud.sh
             if [ -n "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
               openssl aes-256-cbc -d -a -k "$GOOGLE_CREDENTIALS_PASSPHRASE" \
                   -in credentials.json.enc \
