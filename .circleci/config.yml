@@ -48,6 +48,7 @@ jobs:
             gcloud --quiet config set project ${GOOGLE_PROJECT_ID}
       - run:
           name: Run Test
+          command: |
             nox -f django_cloud_deploy/nox.py -s integration_test  
 
 workflows:
