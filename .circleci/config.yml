@@ -31,9 +31,7 @@ jobs:
       - run:
           command: |
             sudo python3 -m pip install --upgrade nox-automation
-            wget https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-sdk-230.0.0-linux-x86_64.tar.gz -O ~/google-cloud-sdk.tar.gz
-            tar -xzf ~/google-cloud-sdk.tar.gz -C ~/
-            source ~/google-cloud-sdk/install.sh
+            curl -sSL https://sdk.cloud.google.com | bash
             if [ -n "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
               sudo openssl aes-256-cbc -d -a -k "$GOOGLE_CREDENTIALS_PASSPHRASE" \
                   -in credentials.json.enc \
