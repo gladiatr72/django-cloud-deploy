@@ -46,7 +46,7 @@ jobs:
             echo ${GCP_CREDENTIAL} > credentials.json
             gcloud auth activate-service-account --key-file credentials.json
             gcloud --quiet config set project ${GOOGLE_PROJECT_ID}
-      -run:
+      - run:
           name: Run Test
             nox -f django_cloud_deploy/nox.py -s integration_test  
 
