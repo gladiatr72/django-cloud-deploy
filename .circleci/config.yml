@@ -25,13 +25,12 @@ jobs:
   integration-test:
     docker:
       - image: google/cloud-sdk
+      - image: googleapis/nox:0.18.2
 
     steps:
       - checkout
       - run:
           command: |
-            apt-get install python3-pip -y
-            python3 -m pip install --upgrade nox-automation
             if [ -n "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
               openssl aes-256-cbc -d -a -k "$GOOGLE_CREDENTIALS_PASSPHRASE" \
                   -in credentials.json.enc \
