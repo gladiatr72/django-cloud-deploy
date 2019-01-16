@@ -24,15 +24,19 @@ jobs:
             nox -f django_cloud_deploy/nox.py -s lint
   integration-test:
     docker:
-      - image: google/cloud-sdk
+      - image: circleci/python
 
     steps:
       - checkout
       - run:
           command: |
-            apt-get update -qqy
-            apt-get install python3-pip -qqy
             python3 -m pip install --upgrade nox-automation
+
+            export CLOUD_SDK_REPO="cloud-sdk-$(lsb_release -c -s)"
+            echo "deb http://packages.cloud.google.com/apt $CLOUD_SDK_REPO main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+            curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+            sudo apt-get update && sudo apt-get install google-cloud-sdk
+            
             if [ -n "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
               openssl aes-256-cbc -d -a -k "$GOOGLE_CREDENTIALS_PASSPHRASE" \
                   -in credentials.json.enc \
