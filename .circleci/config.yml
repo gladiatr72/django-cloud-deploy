@@ -31,6 +31,7 @@ jobs:
       - run:
           name: Install Nox
           command: |
+            apt-get -qqy install python3-pip
             python3 -m pip install --upgrade nox-automation
       - run:
           name: Install Docker client
