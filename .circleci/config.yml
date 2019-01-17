@@ -34,6 +34,11 @@ jobs:
             apt-get -qqy install python3-pip
             python3 -m pip install --upgrade nox-automation
       - run:
+          name: Install Cloud SQL Proxy
+          command: |
+            wget https://dl.google.com/cloudsql/cloud_sql_proxy.linux.amd64 -O /usr/local/bin/cloud_sql_proxy
+            sudo chmod +x /usr/local/bin/cloud_sql_proxy
+      - run:
           name: Install Docker client
           command: |
             set -x
