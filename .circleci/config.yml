@@ -23,8 +23,8 @@ jobs:
           command: |
             nox -f django_cloud_deploy/nox.py -s lint
   integration-test:
-    docker:
-      - image: google/cloud-sdk:latest
+    machine:
+      - image: circleci/classic:201808-01
 
     steps:
       - checkout
@@ -38,14 +38,6 @@ jobs:
           command: |
             curl -L -o /usr/local/bin/cloud_sql_proxy https://dl.google.com/cloudsql/cloud_sql_proxy.linux.amd64
             chmod +x /usr/local/bin/cloud_sql_proxy
-      - run:
-          name: Install Docker client
-          command: |
-            set -x
-            VER="18.09.0"
-            curl -L -o /tmp/docker-$VER.tgz https://download.docker.com/linux/static/stable/x86_64/docker-$VER.tgz
-            tar -xz -C /tmp -f /tmp/docker-$VER.tgz
-            mv -f /tmp/docker/* /usr/bin
       - run:
           name: Dump Google Cloud Credentials to file
           command: |
