@@ -24,20 +24,20 @@ jobs:
             nox -f django_cloud_deploy/nox.py -s lint
   integration-test:
     machine:
-      - image: circleci/classic:201808-01
+      image: circleci/classic:201808-01
 
     steps:
       - checkout
       - run:
           name: Install Nox
           command: |
-            apt-get -qqy install python3-pip
-            python3 -m pip install --upgrade nox-automation
+            sudo apt-get -qqy install python3-pip
+            sudo python3 -m pip install --upgrade nox-automation
       - run:
           name: Install Cloud SQL Proxy
           command: |
             curl -L -o /usr/local/bin/cloud_sql_proxy https://dl.google.com/cloudsql/cloud_sql_proxy.linux.amd64
-            chmod +x /usr/local/bin/cloud_sql_proxy
+            sudo chmod +x /usr/local/bin/cloud_sql_proxy
       - run:
           name: Dump Google Cloud Credentials to file
           command: |
