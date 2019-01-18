@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import webbrowser
 
 from django_cloud_deploy import config
+from django_cloud_deploy.cli import io
 from django_cloud_deploy.cloudlib import billing
 from django_cloud_deploy.skeleton import source_generator
 from django_cloud_deploy.workflow import _database
@@ -70,6 +71,7 @@ class WorkflowManager(object):
             _service_account.ServiceAccountKeyGenerationWorkflow(credentials))
         self._static_content_workflow = (
             _static_content_serve.StaticContentServeWorkflow(credentials))
+        self._console_io = io.ConsoleIO()
 
     def create_and_deploy_new_project(
             self,
@@ -197,33 +199,37 @@ class WorkflowManager(object):
             self._generate_section_header(
                 4, 'Database Set Up (Take Up To 5 Minutes)',
                 self._TOTAL_NEW_STEPS))
-        self._database_workflow.create_and_setup_database(
-            project_id=project_id,
-            instance_name=database_instance_name,
-            database_name=database_name,
-            database_password=database_password,
-            superuser_name=django_superuser_name,
-            superuser_email=django_superuser_email,
-            superuser_password=django_superuser_password,
-            database_user=database_username,
-            cloud_sql_proxy_path=cloud_sql_proxy_path,
-            region=region,
-            port=cloud_sql_proxy_port)
+        with self._console_io.progressbar(300, 'Database Set Up'):
+            self._database_workflow.create_and_setup_database(
+                project_id=project_id,
+                instance_name=database_instance_name,
+                database_name=database_name,
+                database_password=database_password,
+                superuser_name=django_superuser_name,
+                superuser_email=django_superuser_email,
+                superuser_password=django_superuser_password,
+                database_user=database_username,
+                cloud_sql_proxy_path=cloud_sql_proxy_path,
+                region=region,
+                port=cloud_sql_proxy_port)
 
         print(
             self._generate_section_header(5, 'Enable Services',
                                           self._TOTAL_NEW_STEPS))
-        if required_services is None:
-            required_services = self._enable_service_workflow.load_services()
-        self._enable_service_workflow.enable_required_services(
-            project_id, required_services)
+        with self._console_io.progressbar(180, 'Enable Services'):
+            if required_services is None:
+                required_services = (
+                    self._enable_service_workflow.load_services())
+            self._enable_service_workflow.enable_required_services(
+                project_id, required_services)
 
         print(
             self._generate_section_header(
                 6, 'Static Content Serve Set Up (Take Up To 5 Minutes)',
                 self._TOTAL_NEW_STEPS))
-        self._static_content_workflow.serve_static_content(
-            project_id, cloud_storage_bucket_name, static_content_dir)
+        with self._console_io.progressbar(300, 'Static Content Serve Set Up'):
+            self._static_content_workflow.serve_static_content(
+                project_id, cloud_storage_bucket_name, static_content_dir)
 
         print(
             self._generate_section_header(
@@ -238,9 +244,10 @@ class WorkflowManager(object):
                 self._generate_section_header(
                     8, 'Deployment (Take Up To 20 Minutes)',
                     self._TOTAL_NEW_STEPS))
-            app_url = self._deploygke_workflow.deploy_new_app_sync(
-                project_id, cluster_name, django_directory_path,
-                django_project_name, image_name, secrets)
+            with self._console_io.progressbar(1200, 'Deployment'):
+                app_url = self._deploygke_workflow.deploy_new_app_sync(
+                    project_id, cluster_name, django_directory_path,
+                    django_project_name, image_name, secrets)
         else:
             self._upload_secrets_to_bucket(project_id, secrets)
             print(
