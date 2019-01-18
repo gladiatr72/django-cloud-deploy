@@ -254,8 +254,9 @@ class WorkflowManager(object):
                 self._generate_section_header(
                     8, 'Deployment (Take Up To 5 Minutes)',
                     self._TOTAL_NEW_STEPS))
-            app_url = self._deploygae_workflow.deploy_gae_app(
-                project_id, django_directory_path)
+            with self._console_io.progressbar(300, 'Deployment'):
+                app_url = self._deploygae_workflow.deploy_gae_app(
+                    project_id, django_directory_path)
 
         # Create configuration file to save information needed in "update"
         # command.
