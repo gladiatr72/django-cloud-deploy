@@ -156,23 +156,16 @@ class WorkflowManager(object):
 
         cloud_sql_proxy_port = portpicker.pick_unused_port()
 
-        # TODO: Use progress bar to show status info instead of print statement
-        print(
-            self._generate_section_header(1, 'Create GCP Project',
-                                          self._TOTAL_NEW_STEPS))
+        print('[1/{}]: Create GCP Project'.format(self._TOTAL_NEW_STEPS))
         self._project_workflow.create_project(project_name, project_id,
                                               project_creation_mode)
 
-        print(
-            self._generate_section_header(2, 'Billing Set Up',
-                                          self._TOTAL_NEW_STEPS))
+        print('[2/{}]: Billing Set Up'.format(self._TOTAL_NEW_STEPS))
         if not self._billing_client.check_billing_enabled(project_id):
             self._billing_client.enable_project_billing(project_id,
                                                         billing_account_name)
 
-        print(
-            self._generate_section_header(3, 'Django Source Generation',
-                                          self._TOTAL_NEW_STEPS))
+        print('[3/{}]: Django Source Generation'.format(self._TOTAL_NEW_STEPS))
 
         # Source generation requires service account ids.
         required_service_accounts = (
@@ -195,11 +188,8 @@ class WorkflowManager(object):
             django_secrets=django_secrets,
             image_tag=image_name)
 
-        print(
-            self._generate_section_header(
-                4, 'Database Set Up (Take Up To 5 Minutes)',
-                self._TOTAL_NEW_STEPS))
-        with self._console_io.progressbar(300, 'Database Set Up'):
+        with self._console_io.progressbar(
+                300, '[4/{}]: Database Set Up'.format(self._TOTAL_NEW_STEPS)):
             self._database_workflow.create_and_setup_database(
                 project_id=project_id,
                 instance_name=database_instance_name,
@@ -213,48 +203,36 @@ class WorkflowManager(object):
                 region=region,
                 port=cloud_sql_proxy_port)
 
-        print(
-            self._generate_section_header(5, 'Enable Services',
-                                          self._TOTAL_NEW_STEPS))
-        with self._console_io.progressbar(180, 'Enable Services'):
+        with self._console_io.progressbar(
+                180, '[5/{}]: Enable Services'.format(self._TOTAL_NEW_STEPS)):
             if required_services is None:
                 required_services = (
                     self._enable_service_workflow.load_services())
             self._enable_service_workflow.enable_required_services(
                 project_id, required_services)
 
-        print(
-            self._generate_section_header(
-                6, 'Static Content Serve Set Up (Take Up To 5 Minutes)',
-                self._TOTAL_NEW_STEPS))
-        with self._console_io.progressbar(300, 'Static Content Serve Set Up'):
+        with self._console_io.progressbar(
+                300, '[6/{}]: Static Content Serve Set Up'.format(
+                    self._TOTAL_NEW_STEPS)):
             self._static_content_workflow.serve_static_content(
                 project_id, cloud_storage_bucket_name, static_content_dir)
 
-        print(
-            self._generate_section_header(
-                7, 'Create Service Account Necessary For Deployment',
-                self._TOTAL_NEW_STEPS))
+        print('[7/{}]: Create Service Account Necessary For Deployment'.format(
+            self._TOTAL_NEW_STEPS))
         secrets = self._generate_secrets(project_id, database_username,
                                          database_password,
                                          required_service_accounts)
 
         if backend == 'gke':
-            print(
-                self._generate_section_header(
-                    8, 'Deployment (Take Up To 20 Minutes)',
-                    self._TOTAL_NEW_STEPS))
-            with self._console_io.progressbar(1200, 'Deployment'):
+            with self._console_io.progressbar(
+                    1200, '[8/{}]: Deployment'.format(self._TOTAL_NEW_STEPS)):
                 app_url = self._deploygke_workflow.deploy_new_app_sync(
                     project_id, cluster_name, django_directory_path,
                     django_project_name, image_name, secrets)
         else:
             self._upload_secrets_to_bucket(project_id, secrets)
-            print(
-                self._generate_section_header(
-                    8, 'Deployment (Take Up To 5 Minutes)',
-                    self._TOTAL_NEW_STEPS))
-            with self._console_io.progressbar(300, 'Deployment'):
+            with self._console_io.progressbar(
+                    300, '[8/{}]: Deployment'.format(self._TOTAL_NEW_STEPS)):
                 app_url = self._deploygae_workflow.deploy_gae_app(
                     project_id, django_directory_path)
 
