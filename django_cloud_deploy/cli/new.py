@@ -123,9 +123,8 @@ def main(args: argparse.Namespace, console: io.IO = io.ConsoleIO()):
     }
 
     prompt_args = {**vars(args), **actual_parameters}
-    root_prompt = prompt_manager.RootPromptManager(console, prompt_args)
-    root_prompt.prompt()
-    actual_parameters = root_prompt.args
+    root_prompt = prompt_manager.RootPrompt()
+    actual_parameters = root_prompt.prompt(console, prompt_args)
     workflow_manager = workflow.WorkflowManager(
         actual_parameters['credentials'], args.backend)
 

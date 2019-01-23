@@ -1,82 +1,241 @@
+import copy
 import os.path
 import random
 import re
 import string
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 import webbrowser
 
 from django_cloud_deploy import workflow
 from django_cloud_deploy.cli import io
-from django_cloud_deploy.cli import prompt_new
 from django_cloud_deploy.cloudlib import auth
 from django_cloud_deploy.cloudlib import billing
 from django_cloud_deploy.cloudlib import project
 
 
-class TemplatePromptManager(object):
-    """Used as a base template for all Prompt Managers interacting with user.
+def _ask_prompt(question: str,
+                console: io.IO,
+                validate: Optional[Callable[[str], None]] = None,
+                default: Optional[str] = None) -> str:
+    """Used to ask for a single string value.
 
-    They should all have prompt method that should make subsequent prompt calls.
-    Manager should own only one parameter, for which they should have a
-    validate function for which they will call if the argument is already
-    supplied. They also handle any busines logic related to a prompt, as well
-    as become instantiated with any API related classes.
+    Args:
+        question: Question shown to the user on the console.
+        console: Object to use for user I/O.
+        validate: Function used to check if value provided is valid. It should
+            raise a ValueError if the the value fials to validate.
+        default: Default value if user provides no value. (Presses enter)
+
+    Returns:
+        The value entered by the user.
+    """
+    validate = validate or (lambda x: None)
+    while True:
+        answer = console.ask(question)
+        if default and answer is '':
+            answer = default
+        try:
+            validate(answer)
+            break
+        except ValueError as e:
+            console.error(e)
+
+    return answer
+
+
+def _multiple_choice_prompt(question: str,
+                            options: List[str],
+                            console: io.IO,
+                            default: Optional[str] = None):
+    """Used to prompt user to choose from a list of values.
+
+    Args:
+        question: Question shown to the user on the console. Should have
+            a {} to insert a list of enumerated options.
+        options: Possible values user should choose from.
+        console: Object to use for user I/O.
+        default: Default value if user provides no value. (Presses enter)
+
+    Returns:
+        The choice entered by the user.
+    """
+    options_formatted = [
+        '{}. {}'.format(str(i), opt) for i, opt in enumerate(options, 1)
+    ]
+    options = '\n'.join(options_formatted)
+    answer = console.ask(question.format(options))
+
+    while True:
+        try:
+            _multiple_choice_validate(answer, default, len(options))
+            break
+        except ValueError as e:
+            console.error(e)
+            answer = console.ask(question)
+
+    return answer
+
+
+def _multiple_choice_validate(s: str, default: Optional[str], len_options: int):
+    """Validates the option chosen is valid.
+
+    Args:
+        s: Value to validate.
+        default: Default value if user provides no value. (Presses enter)
+        len_options: Amount of possible options for the user.
+
+    Raises:
+        ValueError: If the answer is not valid.
+    """
+    if default is not None and s == '':
+        return
+
+    if not str.isnumeric(s):
+        raise ValueError('Please enter a numeric value')
+
+    if 1 <= int(s) <= (len_options + 1):
+        return
+    else:
+        raise ValueError('Value is not in range')
+
+
+def _binary_prompt(question: str, console: io.IO,
+                   default: Optional[str] = None):
+    """Used to prompt user to choose from a yes or no question.
+
+    Args:
+        question: Question shown to the user on the console.
+        console: Object to use for user I/O.
+        default: Default value if user provides no value. (Presses enter)
+    """
+
+    while True:
+        try:
+            answer = console.ask(question)
+            if default and answer is '':
+                answer = default
+                _binary_validate(answer)
+            break
+        except ValueError as e:
+            console.error(e)
+
+    return answer
+
+
+def _binary_validate(s: str):
+    """Ensures value is yes or no.
+
+    Args:
+        s: Value to validate.
+    """
+    if s.lower() not in ['y', 'n']:
+        raise ValueError('Please respond using "y" or "n"')
+
+    return
+
+
+def _password_prompt(question: str, console: io.IO) -> str:
+    """Used to prompt user to choose a password field.
 
     Args:
         console: Object to use for user I/O.
-        step: Message to present to user regarding what step they are on.
-        args: Dictionary holding prompts answered by user and set up arguments.
+        question: Question shown to the user on the console.
+    """
+    console.tell(question)
+    while True:
+        password1 = console.getpass('Password: ')
+        try:
+            _password_validate(password1)
+        except ValueError as e:
+            console.error(e)
+            continue
+        password2 = console.getpass('Password (again): ')
+        if password1 != password2:
+            console.error('Passwords do not match, please try again')
+            continue
+        return password1
+
+
+def _password_validate(s):
+    """Validates that a string is a valid password.
+
+    Args:
+        s: The string to validate.
+
+    Raises:
+        ValueError: if the input string is not valid.
+    """
+    if len(s) < 5:
+        raise ValueError('Passwords must be at least 6 characters long')
+    allowed_characters = frozenset(string.ascii_letters + string.digits +
+                                   string.punctuation)
+    if frozenset(s).issuperset(allowed_characters):
+        raise ValueError('Invalid character in password: '
+                         'use letters, numbers and punctuation')
+
+    return
+
+
+class TemplatePrompt(object):
+    """Used as a base template for all Parameter Prompts interacting with user.
+
+    They must have a prompt method that calls one of the _x_prompt functions.
+    They must own only one parameter.
+    They must have a validate function.
+    They will validate the value if passed in as a flag.
     """
 
     # Parameter must be set for dictionary key
     PARAMETER = None
 
-    def __init__(self, console: io.IO, step: str, args):
-        self.console = console
-        self.step = step
-        self.args = args
+    def prompt(self, console: io.IO, step: str,
+               args: Dict[str, Any]) -> Dict[str, Any]:
+        """Handles the business logic and calls the prompts.
 
-    def prompt(self) -> None:
-        """Handles the business logic and calls the prompts."""
+        Args:
+            console: Object to use for user I/O.
+            step: Message to present to user regarding what step they are on.
+            args: Dictionary holding prompts answered by user and set up
+                arguments.
+
+        Returns: A Copy of args + the new parameter collected.
+        """
         pass
 
-    def validate(self, val: str):
+    def _validate(self, val: str):
         """Checks if the string is valid. Throws a ValueError if not valid."""
-        return
+        pass
 
-    def get_credentials(self):
-        """Returns the credentials from the args dictionary."""
-        return self.args.get('credentials', None)
-
-    def _is_valid_passed_arg(self) -> bool:
+    def _is_valid_passed_arg(self, console: io.IO, step: str,
+                             value: Optional[str],
+                             validate: Callable[[str], None]) -> bool:
         """Used to validate if the user passed in a parameter as a flag.
 
-        All managers that retrieve a parameter should call this function first.
-        It requires all managers to have implemented validate. The code also
+        All s that retrieve a parameter should call this function first.
+        It requires all s to have implemented validate. The code also
         will process a passed in paramater as a step. This is used to have a
         hard coded amount of steps that is easy to manage.
 
         Returns:
             A boolean indicating if the passed in argument is valid.
         """
-        value = self.args.get(self.PARAMETER, None)
         if value is None:
             return False
 
         try:
-            self.validate(value)
+            validate(value)
         except ValueError as e:
-            self.console.error(e)
+            console.error(e)
             return False
 
-        msg = '{} {}: {}'.format(self.step, self.PARAMETER, value)
-        self.console.tell(msg)
+        msg = '{} {}: {}'.format(step, self.PARAMETER, value)
+        console.tell(msg)
         return True
 
 
-class StringTemplatePromptManager(TemplatePromptManager):
-    """Template for a simple string Prompt Manager."""
+class StringTemplatePrompt(TemplatePrompt):
+    """Template for a simple string Prompt ."""
 
     PARAMETER = ''
     PARAMETER_PRETTY = ''
@@ -84,107 +243,114 @@ class StringTemplatePromptManager(TemplatePromptManager):
     BASE_MESSAGE = '{} Enter a value for {} or leave blank to use'
     DEFAUlT_MESSAGE = '[{}]: '
 
-    def _generate_name_prompt(self):
-        base_message = self.BASE_MESSAGE.format(self.step,
-                                                self.PARAMETER_PRETTY)
+    def prompt(self, console: io.IO, step: str,
+               args: Dict[str, Any]) -> Dict[str, Any]:
+        new_args = copy.deepcopy(args)
+        if self._is_valid_passed_arg(console, step,
+                                     args.get(self.PARAMETER, None),
+                                     self._validate):
+            return new_args
+
+        base_message = self.BASE_MESSAGE.format(step, self.PARAMETER_PRETTY)
         default_message = self.DEFAUlT_MESSAGE.format(self.DEFAULT_VALUE)
         msg = '\n'.join([base_message, default_message])
-        return prompt_new.AskPrompt(
-            msg, self.console, self.validate, default=self.DEFAULT_VALUE)
-
-    def prompt(self):
-        if self._is_valid_passed_arg():
-            return
-
-        self.args[self.PARAMETER] = self._generate_name_prompt().prompt()
+        answer = _ask_prompt(
+            msg, console, self._validate, default=self.DEFAULT_VALUE)
+        new_args[self.PARAMETER] = answer
+        return new_args
 
 
-class GoogleProjectNameManager(TemplatePromptManager):
+class GoogleProjectName(TemplatePrompt):
 
     PARAMETER = 'project_name'
 
-    def __init__(self,
-                 console: io.IO,
-                 step: str,
-                 args,
-                 project_client: Optional[project.ProjectClient] = None):
-        super().__init__(console, step, args)
-        self.project_client = (project_client or
-                               (project.ProjectClient.from_credentials(
-                                   self.get_credentials())))
+    def __init__(self, project_client: project.ProjectClient):
+        self.project_client = project_client
 
-    def validate(self, s: str):
-        """Validates that a string is a valid project name.
+    def _validate(self, project_id: str,
+                  project_creation_mode: workflow.ProjectCreationMode
+                 ) -> Callable[[str], None]:
+        """Returns the method that validates the string.
 
         Args:
-            s: The string to validate.
-
-        Raises:
-            ValueError: if the input string is not valid.
+            project_id: Used to retrieve name when project already exists.
+            project_creation_mode: Used to check if project already exists.
         """
-        if not (4 <= len(s) <= 30):
-            raise ValueError(
-                ('Invalid Google Cloud Platform project name "{}": '
-                 'must be between 4 and 30 characters').format(s))
 
-        if self._is_new_project():
-            return
+        def helper(s: str):
+            if not (4 <= len(s) <= 30):
+                raise ValueError(
+                    ('Invalid Google Cloud Platform project name "{}": '
+                     'must be between 4 and 30 characters').format(s))
 
-        project_id = self.args.get('project_id', None)
-        if project_id is None:
-            raise ValueError('Project Id must be set')
+            if self._is_new_project(project_creation_mode):
+                return
 
-        project_name = self.project_client.get_project(project_id)['name']
-        if project_name != s:
-            raise ValueError('Wrong project name given for project id.')
+            if project_id is None:
+                raise ValueError('Project Id must be set')
 
-        return
+            project_name = self.project_client.get_project(project_id)['name']
+            if project_name != s:
+                raise ValueError('Wrong project name given for project id.')
 
-    def _generate_name_prompt(self):
+        return helper
+
+    def _handle_new_project(self, console: io.IO, step: str, args: [str, Any]):
         default_answer = 'Django Project'
         msg_base = ('{} Enter a Google Cloud Platform project name, or leave '
-                    'blank to use').format(self.step)
+                    'blank to use').format(step)
         msg_default = '[{}]: '.format(default_answer)
         msg = '\n'.join([msg_base, msg_default])
-        return prompt_new.AskPrompt(
-            msg, self.console, self.validate, default=default_answer)
+        project_id = args.get('project_id', None)
+        project_creation_mode = args.get('project_creation_mode', None)
+        return _ask_prompt(
+            msg,
+            console,
+            self._validate(project_id, project_creation_mode),
+            default=default_answer)
 
-    def _is_new_project(self):
+    def _is_new_project(
+            self, project_creation_mode: workflow.ProjectCreationMode) -> bool:
         must_exist = workflow.ProjectCreationMode.MUST_EXIST
-        return self.args.get('project_creation_mode', None) != must_exist
+        return project_creation_mode != must_exist
 
-    def _handle_existing_project(self):
-        assert 'project_id' in self.args, 'project_id must be set'
-        project_id = self.args['project_id']
+    def _handle_existing_project(self, console: io.IO, step: str,
+                                 args: Dict[str, Any]) -> str:
+        assert 'project_id' in args, 'project_id must be set'
+        project_id = args['project_id']
         project_name = self.project_client.get_project(project_id)['name']
-        message = '{} {}: {}'.format(self.step, self.PARAMETER, project_name)
-        self.console.tell(message)
-        self.args['project_name'] = project_name
+        message = '{} {}: {}'.format(step, self.PARAMETER, project_name)
+        console.tell(message)
+        return project_name
 
-    def prompt(self):
-        if self._is_valid_passed_arg():
-            return
+    def prompt(self, console: io.IO, step: str,
+               args: Dict[str, Any]) -> Dict[str, Any]:
+        new_args = copy.deepcopy(args)
 
-        if self._is_new_project():
-            self.args[self.PARAMETER] = self._generate_name_prompt().prompt()
+        project_id = args.get('project_id', None)
+        project_creation_mode = args.get('project_creation_mode', None)
+        if self._is_valid_passed_arg(
+                console, step, args.get(self.PARAMETER, None),
+                self._validate(project_id, project_creation_mode)):
+            return new_args
+
+        project_creation_mode = args.get('project_creation_mode', None)
+        if self._is_new_project(project_creation_mode):
+            new_args[self.PARAMETER] = self._handle_new_project(
+                console, step, args)
         else:
-            self._handle_existing_project()
+            new_args[self.PARAMETER] = self._handle_existing_project(
+                console, step, args)
+
+        return new_args
 
 
-class GoogleNewProjectIdManager(TemplatePromptManager):
+class GoogleNewProjectId(TemplatePrompt):
     """Handles Project ID for new projects."""
 
     PARAMETER = 'project_id'
 
-    def __init__(
-            self,
-            console: io.IO,
-            step: str,
-            args,
-    ):
-        super().__init__(console, step, args)
-
-    def validate(self, s: str):
+    def _validate(self, s: str):
         """Validates that a string is a valid project id.
 
         Args:
@@ -208,66 +374,54 @@ class GoogleNewProjectIdManager(TemplatePromptManager):
         return '{0}-{1}'.format(default_project_id[0:30 - 6 - 1],
                                 random.randint(100000, 1000000))
 
-    def _generate_id_prompt(self):
-        project_name = self.args.get('project_name', None)
+    def prompt(self, console: io.IO, step: str,
+               args: Dict[str, Any]) -> Dict[str, Any]:
+        new_args = copy.deepcopy(args)
+        if self._is_valid_passed_arg(console, step,
+                                     args.get(self.PARAMETER, None),
+                                     self._validate):
+            return new_args
+
+        project_name = args.get('project_name', None)
         default_answer = self._generate_default_project_id(project_name)
         msg_base = ('{} Enter a Google Cloud Platform Project ID, '
-                    'or leave blank to use').format(self.step)
+                    'or leave blank to use').format(step)
         msg_default = '[{}]: '.format(default_answer)
         msg = '\n'.join([msg_base, msg_default])
-        return prompt_new.AskPrompt(
-            msg, self.console, self.validate, default=default_answer)
-
-    def prompt(self):
-        if self._is_valid_passed_arg():
-            return
-
-        self.args[self.PARAMETER] = self._generate_id_prompt().prompt()
+        answer = _ask_prompt(
+            msg, console, self._validate, default=default_answer)
+        new_args[self.PARAMETER] = answer
+        return new_args
 
 
-class GoogleProjectIdManager(TemplatePromptManager):
-    """Manager that handles fork between Existing and New Projects."""
+class GoogleProjectId(TemplatePrompt):
+    """ that handles fork between Existing and New Projects."""
 
     PARAMETER = 'project_id'
 
-    def __init__(self,
-                 console: io.IO,
-                 step: str,
-                 args,
-                 project_client: project.ProjectClient = None):
-        super().__init__(console, step, args)
-        self.project_client = (project_client or
-                               (project.ProjectClient.from_credentials(
-                                   self.get_credentials())))
+    def __init__(self, project_client: project.ProjectClient):
+        self.project_client = project_client
 
-    def prompt(self):
-        prompter = GoogleNewProjectIdManager(self.console, self.step, self.args)
+    def prompt(self, console: io.IO, step: str,
+               args: Dict[str, Any]) -> Dict[str, Any]:
+        prompter = GoogleNewProjectId()
 
-        if self.args.get('use_existing_project', False):
-            prompter = GoogleExistingProjectIdManager(
-                self.console, self.step, self.args, self.project_client)
+        if args.get('use_existing_project', False):
+            prompter = GoogleExistingProjectId(self.project_client)
 
-        prompter.prompt()
+        return prompter.prompt(console, step, args)
 
 
-class GoogleExistingProjectIdManager(TemplatePromptManager):
+class GoogleExistingProjectId(TemplatePrompt):
     """Handles Project ID for existing projects."""
 
     PARAMETER = 'project_id'
 
-    def __init__(self, console: io.IO, step: str, args,
-                 project_client: project.ProjectClient):
-        super().__init__(console, step, args)
-        self.project_client = (project_client or
-                               (project.ProjectClient.from_credentials(
-                                   self.get_credentials())))
+    def __init__(self, project_client: project.ProjectClient):
+        self.project_client = project_client
 
-    def _generate_existing_id_prompt(self):
-        msg = ('{} Enter the <b>existing<b> Google Cloud Platform Project ID '
-               'to use.').format(self.step)
-        return prompt_new.AskPrompt(msg, self.console, self.validate)
-
-    def prompt(self):
+    def prompt(self, console: io.IO, step: str,
+               args: Dict[str, Any]) -> Dict[str, Any]:
         """Prompt the user to a Google Cloud Platform project id.
 
         If the user supplies the project_id as a flag we want to validate that
@@ -275,12 +429,19 @@ class GoogleExistingProjectIdManager(TemplatePromptManager):
 
         """
 
-        if self._is_valid_passed_arg():
-            return
+        new_args = copy.deepcopy(args)
+        if self._is_valid_passed_arg(console, step,
+                                     args.get(self.PARAMETER, None),
+                                     self._validate):
+            return new_args
 
-        self.args[self.PARAMETER] = self._generate_existing_id_prompt().prompt()
+        msg = ('{} Enter the <b>existing<b> Google Cloud Platform Project ID '
+               'to use.').format(step)
+        answer = _ask_prompt(msg, console, self._validate)
+        new_args[self.PARAMETER] = answer
+        return new_args
 
-    def validate(self, s):
+    def _validate(self, s: str):
         """Validates that a string is a valid project id.
 
         Args:
@@ -299,68 +460,59 @@ class GoogleExistingProjectIdManager(TemplatePromptManager):
             raise ValueError('Project {} does not exist'.format(s))
 
 
-class CredentialsPromptManager(TemplatePromptManager):
+class CredentialsPrompt(TemplatePrompt):
 
     PARAMETER = 'credentials'
 
-    def __init__(self,
-                 console: io.IO,
-                 step: str,
-                 args,
-                 auth_client: Optional[auth.AuthClient] = None):
-        super().__init__(console, step, args)
-        self.auth_client = auth_client or auth.AuthClient()
+    def __init__(self, auth_client: auth.AuthClient):
+        self.auth_client = auth_client
 
-    def _generate_credentials_prompt(self, active_account: str):
-        msg = ('You have logged in with account [{}]. Do you want to '
-               'use it? [Y/n]: ').format(active_account)
-        return prompt_new.BinaryPrompt(msg, self.console, default='Y')
-
-    def prompt(self):
+    def prompt(self, console: io.IO, step: str,
+               args: Dict[str, Any]) -> Dict[str, Any]:
         """Prompt the user for access to the Google credentials.
 
         Returns:
             The user's credentials.
         """
-        if self._is_valid_passed_arg():
-            return
+        new_args = copy.deepcopy(args)
+        if self._is_valid_passed_arg(console, step,
+                                     args.get(self.PARAMETER, None),
+                                     self._validate):
+            return new_args
 
-        self.console.tell(
+        console.tell(
             ('{} In order to deploy your application, you must allow Django '
-             'Deploy to access your Google account.').format(self.step))
+             'Deploy to access your Google account.').format(step))
         create_new_credentials = True
         active_account = self.auth_client.get_active_account()
-        credentials_prompt = self._generate_credentials_prompt(active_account)
+
+        msg = ('You have logged in with account [{}]. Do you want to '
+               'use it? [Y/n]: ').format(active_account)
+        use_active_credentials = _binary_prompt(msg, console, default='Y')
 
         if active_account:  # The user has already logged in before
-            use_active_credentials = credentials_prompt.prompt().lower()
-            create_new_credentials = use_active_credentials == 'n'
+            create_new_credentials = use_active_credentials.lower() == 'n'
 
         if create_new_credentials:
             creds = self.auth_client.create_default_credentials()
         else:
             creds = self.auth_client.get_default_credentials()
 
-        self.args[self.PARAMETER] = creds
+        new_args[self.PARAMETER] = creds
+        return new_args
 
 
-class BillingPrompt(TemplatePromptManager):
+class BillingPrompt(TemplatePrompt):
     """Allow the user to select a billing account to use for deployment."""
 
     PARAMETER = 'billing_account_name'
 
-    def __init__(self,
-                 console: io.IO,
-                 step: str,
-                 args,
-                 billing_client: billing.BillingClient = None):
-        super().__init__(console, step, args)
-        creds = self.get_credentials()
-        self.billing_client = (billing_client or
-                               billing.BillingClient.from_credentials(creds))
+    def __init__(self, billing_client: billing.BillingClient = None):
+        self.billing_client = billing_client
 
     def _get_new_billing_account(
-            self, existing_billing_accounts: List[Dict[str, Any]]) -> str:
+            self, console,
+            existing_billing_accounts: List[Dict[str, Any]]) -> str:
         """Ask the user to create a new billing account and return name of it.
 
         Args:
@@ -374,7 +526,7 @@ class BillingPrompt(TemplatePromptManager):
         existing_billing_account_names = [
             account['name'] for account in existing_billing_accounts
         ]
-        self.console.tell('Waiting for billing account to be created.')
+        console.tell('Waiting for billing account to be created.')
         while True:
             billing_accounts = self.billing_client.list_billing_accounts(
                 only_open_accounts=True)
@@ -388,70 +540,78 @@ class BillingPrompt(TemplatePromptManager):
                 return diff[0]
             time.sleep(2)
 
-    def _does_project_exist(self) -> bool:
+    def _does_project_exist(
+            self, project_creation_mode: Optional[workflow.ProjectCreationMode]
+    ) -> bool:
         must_exist = workflow.ProjectCreationMode.MUST_EXIST
-        return ('project_creation_mode' in self.args and
-                (self.args['project_creation_mode'] == must_exist))
+        return project_creation_mode == must_exist
 
-    def _has_existing_billing_account(self) -> bool:
-        assert 'project_id' in self.args, 'project_id must be set'
-        project_id = self.args['project_id']
+    def _has_existing_billing_account(self, console: io.IO, step: str,
+                                      args: Dict[str, Any]) -> (Optional[str]):
+        assert 'project_id' in args, 'project_id must be set'
+        project_id = args['project_id']
         billing_account = (self.billing_client.get_billing_account(project_id))
         if not billing_account.get('billingEnabled', False):
-            return False
+            return None
 
-        msg = ('{} Billing is already enabled on this project.'.format(
-            self.step))
-        self.console.tell(msg)
-        self.args[self.PARAMETER] = billing_account.get('billingAccountName')
-        return True
+        msg = ('{} Billing is already enabled on this project.'.format(step))
+        console.tell(msg)
+        return billing_account.get('billingAccountName')
 
-    def _generate_billing_prompt(self, billing_accounts):
+    def _handle_existing_billing_accounts(self, console, billing_accounts):
         question = ('You have the following existing billing accounts:\n{}\n'
                     'Please enter your numeric choice or press [Enter] to '
                     'create a new billing account: ')
 
         options = [info['displayName'] for info in billing_accounts]
         new_billing_account = ''
-        return prompt_new.MultipleChoicePrompt(
-            question, options, self.console, default=new_billing_account)
 
-    def _handle_existing_billing_accounts(self, billing_accounts):
-        new_billing_account = ''
-        answer = self._generate_billing_prompt(billing_accounts).prompt()
+        answer = _multiple_choice_prompt(
+            question, options, console, default=new_billing_account)
+
         if answer == new_billing_account:
-            return self._get_new_billing_account(billing_accounts)
+            return self._get_new_billing_account(console, billing_accounts)
 
         val = billing_accounts[int(answer) - 1]['name']
         return val
 
-    def prompt(self):
+    def prompt(self, console: io.IO, step: str,
+               args: Dict[str, Any]) -> Dict[str, Any]:
         """Prompt the user for a billing account to use for deployment.
         """
-        if self._is_valid_passed_arg():
-            return
+        new_args = copy.deepcopy(args)
+        if self._is_valid_passed_arg(console, step,
+                                     args.get(self.PARAMETER, None),
+                                     self._validate):
+            return new_args
 
-        if self._does_project_exist() and self._has_existing_billing_account():
-            return
+        project_creation_mode = args.get('project_creation_mode', None)
+        if self._does_project_exist(project_creation_mode):
+            billing_account = self._has_existing_billing_account(
+                console, step, args)
+            new_args[self.PARAMETER] = billing_account
+            return new_args
 
         billing_accounts = self.billing_client.list_billing_accounts(
             only_open_accounts=True)
-        self.console.tell(
+        console.tell(
             ('{} In order to deploy your application, you must enable billing '
-             'for your Google Cloud Project.').format(self.step))
+             'for your Google Cloud Project.').format(step))
 
         # If the user has existing billing accounts, we let the user pick one
         if billing_accounts:
-            val = self._handle_existing_billing_accounts(billing_accounts)
-            self.args[self.PARAMETER] = val
-            return
+            val = self._handle_existing_billing_accounts(
+                console, billing_accounts)
+            new_args[self.PARAMETER] = val
+            return new_args
 
         # If the user does not have existing billing accounts, we direct
         # the user to create a new one.
-        self.console.tell('You do not have existing billing accounts.')
-        self.console.ask('Press [Enter] to create a new billing account.')
-        val = self._get_new_billing_account(billing_accounts)
-        self.args[self.PARAMETER] = val
+        console.tell('You do not have existing billing accounts.')
+        console.ask('Press [Enter] to create a new billing account.')
+        val = self._get_new_billing_account(console, billing_accounts)
+        new_args[self.PARAMETER] = val
+        return new_args
 
     def validate(self, s):
         """Validates that a string is a valid billing account.
@@ -471,77 +631,82 @@ class BillingPrompt(TemplatePromptManager):
             raise ValueError('The provided billing account does not exist.')
 
 
-class PostgresPasswordPrompt(TemplatePromptManager):
+class PostgresPasswordPrompt(TemplatePrompt):
     """Allow the user to enter a Django Postgres password."""
 
     PARAMETER = 'database_password'
 
-    def prompt(self):
-        if self._is_valid_passed_arg():
-            return
+    def prompt(self, console: io.IO, step: str,
+               args: Dict[str, Any]) -> Dict[str, Any]:
+        new_args = copy.deepcopy(args)
+        if self._is_valid_passed_arg(console, step,
+                                     args.get(self.PARAMETER, None),
+                                     self._validate):
+            return new_args
 
-        pass_prompt = prompt_new.PasswordPrompt(self.console)
         msg = 'Enter a password for the default database user "postgres"'
-        self.console.tell('{} {}'.format(self.step, msg))
-        self.args[self.PARAMETER] = pass_prompt.prompt()
+        question = '{} {}'.format(step, msg)
+        password = _password_prompt(question, console)
+        new_args[self.PARAMETER] = password
+        return new_args
 
-    def validate(self, s: str):
-        pass_prompt = prompt_new.PasswordPrompt(self.console)
-        pass_prompt.validate(s)
+    def _validate(self, s: str):
+        _password_validate(s)
 
 
-class DjangoFilesystemPath(TemplatePromptManager):
+class DjangoFilesystemPath(TemplatePrompt):
     """Allow the user to file system path for their project."""
 
     PARAMETER = 'django_directory_path'
 
-    def _generate_replace_prompt(self, directory):
+    def _ask_to_replace(self, console, directory):
         msg = (('The directory \'{}\' already exists, '
                 'replace it\'s contents [y/N]: ').format(directory))
-        return prompt_new.AskPrompt(msg, self.console, default='n')
+        return _ask_prompt(msg, console, default='n')
 
-    def _generate_directory_prompt(self):
+    def _ask_for_directory(self, console, step, args) -> str:
         base_msg = ('{} Enter a new directory path to store project source, '
-                    'or leave blank to use').format(self.step)
+                    'or leave blank to use').format(step)
 
         home_dir = os.path.expanduser('~')
         # TODO: Remove filesystem-unsafe characters. Implement a validation
         # method that checks for these.
         default_dir = os.path.join(
             home_dir,
-            self.args.get('project_name', 'django-project').lower().replace(
+            args.get('project_name', 'django-project').lower().replace(
                 ' ', '-'))
         default_msg = '[{}]: '.format(default_dir)
 
         msg = '\n'.join([base_msg, default_msg])
-        return prompt_new.AskPrompt(msg, self.console, default=default_dir)
+        return _ask_prompt(msg, console, default=default_dir)
 
-    def prompt(self):
+    def prompt(self, console: io.IO, step: str,
+               args: Dict[str, Any]) -> Dict[str, Any]:
         """Prompt the user to enter a file system path for their project."""
-
-        dir_prompt = self._generate_directory_prompt()
+        new_args = copy.deepcopy(args)
         while True:
-            directory = dir_prompt.prompt()
+            directory = self._ask_for_directory(console, step, args)
             if os.path.exists(directory):
-                replace_prompt = self._generate_replace_prompt(directory)
-                if replace_prompt.prompt().lower() == 'y':
+                replace = self._ask_to_replace(console, directory)
+                if replace == 'y':
                     break
 
-        self.args[self.PARAMETER] = directory
+        new_args[self.PARAMETER] = directory
+        return new_args
 
     def validate(self):
         # TODO
-        return True
+        return
 
 
-class DjangoProjectNamePrompt(StringTemplatePromptManager):
+class DjangoProjectNamePrompt(StringTemplatePrompt):
     """Allow the user to enter a Django project name."""
 
     PARAMETER = 'django_project_name'
     PARAMETER_PRETTY = 'Django project name'
     DEFAULT_VALUE = 'mysite'
 
-    def validate(self, s):
+    def _validate(self, s: str):
         """Validates that a string is a valid Django project name.
 
         Args:
@@ -555,14 +720,14 @@ class DjangoProjectNamePrompt(StringTemplatePromptManager):
                               'must be a valid Python identifier').format(s))
 
 
-class DjangoAppNamePrompt(StringTemplatePromptManager):
+class DjangoAppNamePrompt(StringTemplatePrompt):
     """Allow the user to enter a Django project name."""
 
     PARAMETER = 'django_app_name'
     PARAMETER_PRETTY = 'Django app name'
     DEFAULT_VALUE = 'home'
 
-    def validate(self, s):
+    def _validate(self, s: str):
         """Validates that a string is a valid Django project name.
 
         Args:
@@ -576,14 +741,14 @@ class DjangoAppNamePrompt(StringTemplatePromptManager):
                               'must be a valid Python identifier').format(s))
 
 
-class DjangoSuperuserLoginPrompt(StringTemplatePromptManager):
+class DjangoSuperuserLoginPrompt(StringTemplatePrompt):
     """Allow the user to enter a Django superuser login."""
 
     PARAMETER = 'django_superuser_login'
     PARAMETER_PRETTY = 'Django superuser login name'
     DEFAULT_VALUE = 'admin'
 
-    def validate(self, s: str):
+    def _validate(self, s: str):
         """Validates that a string is a valid Django superuser login.
 
         Args:
@@ -597,34 +762,38 @@ class DjangoSuperuserLoginPrompt(StringTemplatePromptManager):
                               'must be a alpha numeric').format(s))
 
 
-class DjangoSuperuserPasswordPrompt(TemplatePromptManager):
+class DjangoSuperuserPasswordPrompt(TemplatePrompt):
     """Allow the user to enter a password for the Django superuser."""
 
     PARAMETER = 'django_superuser_password'
 
-    def prompt(self):
-        if self._is_valid_passed_arg():
-            return
+    def prompt(self, console: io.IO, step: str,
+               args: Dict[str, Any]) -> Dict[str, Any]:
+        new_args = copy.deepcopy(args)
+        if self._is_valid_passed_arg(console, step,
+                                     args.get(self.PARAMETER, None),
+                                     self._validate):
+            return new_args
 
-        pass_prompt = prompt_new.PasswordPrompt(self.console)
         msg = 'Enter a password for the Django superuser "{}"'.format(
-            self.args['django_superuser_login'])
-        self.console.tell('{} {}'.format(self.step, msg))
-        self.args[self.PARAMETER] = pass_prompt.prompt()
+            args['django_superuser_login'])
+        question = '{} {}'.format(step, msg)
+        answer = _password_prompt(question, console)
+        new_args[self.PARAMETER] = answer
+        return new_args
 
-    def validate(self, s: str):
-        pass_prompt = prompt_new.PasswordPrompt(self.console)
-        return pass_prompt.validate(s)
+    def _validate(self, s: str):
+        return _password_validate(s)
 
 
-class DjangoSuperuserEmailPrompt(StringTemplatePromptManager):
+class DjangoSuperuserEmailPrompt(StringTemplatePrompt):
     """Allow the user to enter a Django email address."""
 
     PARAMETER = 'django_superuser_email'
     PARAMETER_PRETTY = 'Django superuser email'
     DEFAULT_VALUE = 'test@example.com'
 
-    def validate(self, s: str):
+    def _validate(self, s: str):
         """Validates that a string is a valid Django superuser email address.
 
         Args:
@@ -639,11 +808,10 @@ class DjangoSuperuserEmailPrompt(StringTemplatePromptManager):
                               '"test@example.com"').format(s))
 
 
-class RootPromptManager(object):
-    """Class at the top level that instantiates all of the Prompt Managers."""
+class RootPrompt(object):
+    """Class at the top level that instantiates all of the Prompts."""
 
     PROMPT_ORDER = [
-        'credentials',
         'project_id',
         'project_name',
         'billing_account_name',
@@ -656,34 +824,45 @@ class RootPromptManager(object):
         'django_superuser_email',
     ]
 
-    required_parameters_to_prompt = {
-        'credentials': CredentialsPromptManager,
-        'project_id': GoogleProjectIdManager,
-        'project_name': GoogleProjectNameManager,
-        'billing_account_name': BillingPrompt,
-        'database_password': PostgresPasswordPrompt,
-        'django_directory_path': DjangoFilesystemPath,
-        'django_project_name': DjangoProjectNamePrompt,
-        'django_app_name': DjangoAppNamePrompt,
-        'django_superuser_login': DjangoSuperuserLoginPrompt,
-        'django_superuser_password': DjangoSuperuserPasswordPrompt,
-        'django_superuser_email': DjangoSuperuserEmailPrompt
-    }
+    def _get_creds(self, console: io.IO, first_step: str, args: Dict[str, Any]):
 
-    def __init__(self, console: io.IO, args):
-        self.console = console
-        self.args = args
+        auth_client = auth.AuthClient()
+        return CredentialsPrompt(auth_client).prompt(console, first_step,
+                                                     args)['credentials']
 
-    def _setup(self):
-        if self.args.get('use_existing_project', False):
-            self.args['project_creation_mode'] = (
+    def _setup_prompts(self, creds) -> Dict[str, TemplatePrompt]:
+        project_client = project.ProjectClient.from_credentials(creds)
+        billing_client = billing.BillingClient.from_credentials(creds)
+
+        return {
+            'project_id': GoogleProjectId(project_client),
+            'project_name': GoogleProjectName(project_client),
+            'billing_account_name': BillingPrompt(billing_client),
+            'database_password': PostgresPasswordPrompt(),
+            'django_directory_path': DjangoFilesystemPath(),
+            'django_project_name': DjangoProjectNamePrompt(),
+            'django_app_name': DjangoAppNamePrompt(),
+            'django_superuser_login': DjangoSuperuserLoginPrompt(),
+            'django_superuser_password': DjangoSuperuserPasswordPrompt(),
+            'django_superuser_email': DjangoSuperuserEmailPrompt()
+        }
+
+    def prompt(self, console: io.IO, args: Dict[str, Any]) -> Dict[str, Any]:
+        new_args = copy.deepcopy(args)
+        if new_args.get('use_existing_project', False):
+            new_args['project_creation_mode'] = (
                 workflow.ProjectCreationMode.MUST_EXIST)
 
-    def prompt(self):
-        self._setup()
+        total_steps = len(self.PROMPT_ORDER) + 1
+        step_template = '<b>[{}/{}]</b>'
+        first_step = step_template.format(1, total_steps)
 
-        total_steps = len(self.PROMPT_ORDER)
-        for i, prompt in enumerate(self.PROMPT_ORDER, 1):
-            step = '<b>[{}/{}]</b>'.format(i, total_steps)
-            self.required_parameters_to_prompt[prompt](self.console, step,
-                                                       self.args).prompt()
+        creds = self._get_creds(console, first_step, args)
+        new_args['credentials'] = creds
+        required_parameters_to_prompt = self._setup_prompts(creds)
+        for i, prompt in enumerate(self.PROMPT_ORDER, 2):
+            step = step_template.format(i, total_steps)
+            new_args = required_parameters_to_prompt[prompt].prompt(
+                console, step, new_args)
+
+        return new_args
