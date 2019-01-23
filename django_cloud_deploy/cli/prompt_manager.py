@@ -502,7 +502,6 @@ class CredentialsPrompt(TemplatePrompt):
         return new_args
 
 
-
 class BillingPrompt(TemplatePrompt):
     """Allow the user to select a billing account to use for deployment."""
 
