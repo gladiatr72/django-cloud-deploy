@@ -502,6 +502,7 @@ class CredentialsPrompt(TemplatePrompt):
         return new_args
 
 
+
 class BillingPrompt(TemplatePrompt):
     """Allow the user to select a billing account to use for deployment."""
 
@@ -589,8 +590,9 @@ class BillingPrompt(TemplatePrompt):
         if self._does_project_exist(project_creation_mode):
             billing_account = self._has_existing_billing_account(
                 console, step, args)
-            new_args[self.PARAMETER] = billing_account
-            return new_args
+            if billing_account is not None:
+                new_args[self.PARAMETER] = billing_account
+                return new_args
 
         billing_accounts = self.billing_client.list_billing_accounts(
             only_open_accounts=True)
@@ -825,7 +827,6 @@ class RootPrompt(object):
     ]
 
     def _get_creds(self, console: io.IO, first_step: str, args: Dict[str, Any]):
-
         auth_client = auth.AuthClient()
         return CredentialsPrompt(auth_client).prompt(console, first_step,
                                                      args)['credentials']
