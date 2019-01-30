@@ -691,6 +691,7 @@ class DjangoFilesystemPath(TemplatePrompt):
                 replace = self._ask_to_replace(console, directory)
                 if replace == 'y':
                     break
+            break
 
         new_args[self.PARAMETER] = directory
         return new_args
