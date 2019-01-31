@@ -72,7 +72,7 @@ def _multiple_choice_prompt(question: str,
             break
         except ValueError as e:
             console.error(e)
-            answer = console.ask(question)
+            answer = console.ask(question.format(options))
 
     return answer
 
@@ -689,8 +689,8 @@ class DjangoFilesystemPath(TemplatePrompt):
             directory = self._ask_for_directory(console, step, args)
             if os.path.exists(directory):
                 replace = self._ask_to_replace(console, directory)
-                if replace == 'y':
-                    break
+                if replace.lower() == 'n':
+                    continue
             break
 
         new_args[self.PARAMETER] = directory
@@ -769,6 +769,13 @@ class DjangoSuperuserPasswordPrompt(TemplatePrompt):
 
     PARAMETER = 'django_superuser_password'
 
+    def _get_prompt(self, arguments: Dict[str, Any]) -> str:
+        if 'django_superuser_login' in arguments:
+            return 'Enter a password for the Django superuser "{}"'.format(
+                arguments['django_superuser_login'])
+        else:
+            return 'Enter a password for the Django superuser'
+
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
         new_args = copy.deepcopy(args)
@@ -777,8 +784,7 @@ class DjangoSuperuserPasswordPrompt(TemplatePrompt):
                                      self._validate):
             return new_args
 
-        msg = 'Enter a password for the Django superuser "{}"'.format(
-            args['django_superuser_login'])
+        msg = self._get_prompt(args)
         question = '{} {}'.format(step, msg)
         answer = _password_prompt(question, console)
         new_args[self.PARAMETER] = answer
