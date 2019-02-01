@@ -18,7 +18,7 @@ import argparse
 from django_cloud_deploy import tool_requirements
 from django_cloud_deploy import workflow
 from django_cloud_deploy.cli import io
-from django_cloud_deploy.cli import prompt_manager
+from django_cloud_deploy.cli import prompt
 
 
 def add_arguments(parser):
@@ -123,7 +123,7 @@ def main(args: argparse.Namespace, console: io.IO = io.ConsoleIO()):
     }
 
     prompt_args = {**vars(args), **actual_parameters}
-    root_prompt = prompt_manager.RootPrompt()
+    root_prompt = prompt.RootPrompt()
     actual_parameters = root_prompt.prompt(console, prompt_args)
     workflow_manager = workflow.WorkflowManager(
         actual_parameters['credentials'], args.backend)

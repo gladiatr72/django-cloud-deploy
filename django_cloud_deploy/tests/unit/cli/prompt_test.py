@@ -21,7 +21,7 @@ from absl.testing import parameterized
 
 from django_cloud_deploy import workflow
 from django_cloud_deploy.cli import io
-from django_cloud_deploy.cli import prompt_manager
+from django_cloud_deploy.cli import prompt
 from django_cloud_deploy.cloudlib import project
 from django_cloud_deploy.cloudlib import billing
 
@@ -48,7 +48,7 @@ class GoogleCloudProjectNamePromptTest(absltest.TestCase):
         creds = mock.Mock(credentials.Credentials, authSpec=True)
         project_client = project.ProjectClient.from_credentials(creds)
 
-        cls.google_project_name_prompt = prompt_manager.GoogleProjectName(
+        cls.google_project_name_prompt = prompt.GoogleProjectName(
             project_client)
 
     def test_prompt(self):
@@ -99,7 +99,7 @@ class DjangoProjectNamePromptTest(absltest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.djang_project_name_prompt = prompt_manager.DjangoProjectNamePrompt()
+        cls.djang_project_name_prompt = prompt.DjangoProjectNamePrompt()
 
     def test_prompt(self):
         test_io = io.TestIO()
@@ -135,7 +135,7 @@ class DjangoAppNamePromptTest(absltest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.django_app_name_prompt = prompt_manager.DjangoAppNamePrompt()
+        cls.django_app_name_prompt = prompt.DjangoAppNamePrompt()
 
     def test_prompt(self):
         test_io = io.TestIO()
@@ -171,7 +171,7 @@ class DjangoSuperuserLoginPromptTest(absltest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.django_superuser_prompt = prompt_manager.DjangoSuperuserLoginPrompt(
+        cls.django_superuser_prompt = prompt.DjangoSuperuserLoginPrompt(
         )
 
     def test_prompt(self):
@@ -208,7 +208,7 @@ class DjangoSuperuserEmailPromptTest(absltest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.django_superuser_email_prompt = prompt_manager.DjangoSuperuserEmailPrompt(
+        cls.django_superuser_email_prompt = prompt.DjangoSuperuserEmailPrompt(
         )
 
     def test_prompt(self):
@@ -247,7 +247,7 @@ class ProjectIdPromptTest(parameterized.TestCase):
     def setUpClass(cls):
         creds = mock.Mock(credentials.Credentials, authSpec=True)
         project_client = project.ProjectClient.from_credentials(creds)
-        cls.project_id_prompt = prompt_manager.GoogleProjectId(project_client)
+        cls.project_id_prompt = prompt.GoogleProjectId(project_client)
 
     def test_new_prompt(self):
         test_io = io.TestIO()
@@ -313,7 +313,7 @@ class DjangoFilesystemPathTest(parameterized.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.file_system_prompt = prompt_manager.DjangoFilesystemPath()
+        cls.file_system_prompt = prompt.DjangoFilesystemPath()
 
     def test_prompt(self):
         test_io = io.TestIO()
@@ -373,7 +373,7 @@ class PostgresPasswordPromptTest(parameterized.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.postgres_password_prompt = prompt_manager.PostgresPasswordPrompt()
+        cls.postgres_password_prompt = prompt.PostgresPasswordPrompt()
 
     def test_prompt(self):
         test_io = io.TestIO()
@@ -414,7 +414,7 @@ class DjangoSuperuserPasswordPromptTest(parameterized.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.superuser_password_prompt = prompt_manager.DjangoSuperuserPasswordPrompt(
+        cls.superuser_password_prompt = prompt.DjangoSuperuserPasswordPrompt(
         )
 
     def test_prompt(self):
@@ -507,7 +507,7 @@ class BillingPromptTest(absltest.TestCase):
     @classmethod
     def setUpClass(cls):
         creds = mock.Mock(credentials.Credentials, authSpec=True)
-        cls.billing_prompt = prompt_manager.BillingPrompt(
+        cls.billing_prompt = prompt.BillingPrompt(
             billing.BillingClient.from_credentials(creds))
 
     @mock.patch(('django_cloud_deploy.cloudlib.billing.BillingClient.'
