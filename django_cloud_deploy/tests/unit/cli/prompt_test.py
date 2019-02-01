@@ -171,8 +171,7 @@ class DjangoSuperuserLoginPromptTest(absltest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.django_superuser_prompt = prompt.DjangoSuperuserLoginPrompt(
-        )
+        cls.django_superuser_prompt = prompt.DjangoSuperuserLoginPrompt()
 
     def test_prompt(self):
         test_io = io.TestIO()
@@ -208,8 +207,7 @@ class DjangoSuperuserEmailPromptTest(absltest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.django_superuser_email_prompt = prompt.DjangoSuperuserEmailPrompt(
-        )
+        cls.django_superuser_email_prompt = prompt.DjangoSuperuserEmailPrompt()
 
     def test_prompt(self):
         test_io = io.TestIO()
@@ -414,8 +412,7 @@ class DjangoSuperuserPasswordPromptTest(parameterized.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.superuser_password_prompt = prompt.DjangoSuperuserPasswordPrompt(
-        )
+        cls.superuser_password_prompt = prompt.DjangoSuperuserPasswordPrompt()
 
     def test_prompt(self):
         test_io = io.TestIO()
