@@ -186,9 +186,10 @@ def _password_validate(s):
 
 
 class Prompt(abc.ABC):
+
     @abc.abstractmethod
     def prompt(self, console: io.IO, step: str,
-        args: Dict[str, Any]) -> Dict[str, Any]:
+               args: Dict[str, Any]) -> Dict[str, Any]:
         """Handles the business logic and calls the prompts.
 
         Args:
@@ -208,8 +209,8 @@ class Prompt(abc.ABC):
 
     @abc.abstractmethod
     def _is_valid_passed_arg(self, console: io.IO, step: str,
-        value: Optional[str],
-        validate: Callable[[str], None]) -> bool:
+                             value: Optional[str],
+                             validate: Callable[[str], None]) -> bool:
         """Used to validate if the user passed in a parameter as a flag.
 
         All s that retrieve a parameter should call this function first.
@@ -236,7 +237,7 @@ class TemplatePrompt(Prompt):
     PARAMETER = None
 
     def prompt(self, console: io.IO, step: str,
-        args: Dict[str, Any]) -> Dict[str, Any]:
+               args: Dict[str, Any]) -> Dict[str, Any]:
         """Handles the business logic and calls the prompts.
 
         Args:
