@@ -1,3 +1,4 @@
+import abc
 import copy
 import enum
 import os.path
@@ -184,7 +185,45 @@ def _password_validate(s):
     return
 
 
-class TemplatePrompt(object):
+class Prompt(abc.ABC):
+    @abc.abstractmethod
+    def prompt(self, console: io.IO, step: str,
+        args: Dict[str, Any]) -> Dict[str, Any]:
+        """Handles the business logic and calls the prompts.
+
+        Args:
+            console: Object to use for user I/O.
+            step: Message to present to user regarding what step they are on.
+            args: Dictionary holding prompts answered by user and set up
+                arguments.
+
+        Returns: A Copy of args + the new parameter collected.
+        """
+        pass
+
+    @abc.abstractmethod
+    def _validate(self, val: str):
+        """Checks if the string is valid. Throws a ValueError if not valid."""
+        pass
+
+    @abc.abstractmethod
+    def _is_valid_passed_arg(self, console: io.IO, step: str,
+        value: Optional[str],
+        validate: Callable[[str], None]) -> bool:
+        """Used to validate if the user passed in a parameter as a flag.
+
+        All s that retrieve a parameter should call this function first.
+        It requires all s to have implemented validate. The code also
+        will process a passed in paramater as a step. This is used to have a
+        hard coded amount of steps that is easy to manage.
+
+        Returns:
+            A boolean indicating if the passed in argument is valid.
+        """
+        pass
+
+
+class TemplatePrompt(Prompt):
     """Used as a base template for all Parameter Prompts interacting with user.
 
     They must have a prompt method that calls one of the _x_prompt functions.
@@ -197,7 +236,7 @@ class TemplatePrompt(object):
     PARAMETER = None
 
     def prompt(self, console: io.IO, step: str,
-               args: Dict[str, Any]) -> Dict[str, Any]:
+        args: Dict[str, Any]) -> Dict[str, Any]:
         """Handles the business logic and calls the prompts.
 
         Args:
