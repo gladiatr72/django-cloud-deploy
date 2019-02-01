@@ -1,28 +1,12 @@
-# Copyright 2018 Google LLC
-#
-# Licensed under the Apache License, Versconsolen 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     https://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITconsoleNS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissconsolens and
-# limitatconsolens under the License.
-"""Prompts the user for information e.g. project name."""
-
-import abc
+import copy
+import enum
 import os.path
 import random
 import re
 import string
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 import webbrowser
-
-from google.auth import credentials
 
 from django_cloud_deploy import workflow
 from django_cloud_deploy.cli import io
@@ -32,260 +16,362 @@ from django_cloud_deploy.cloudlib import project
 from django_cloud_deploy.skeleton import utils
 
 
-class Prompt(object):
-    """Base class for classes the collect user input from the console."""
+class Command(enum.Enum):
+    NEW = 1
+    UPDATE = 2
 
-    @classmethod
-    @abc.abstractmethod
-    def prompt(cls,
-               console: io.IO,
-               step_prompt: str,
-               arguments: Dict[str, Any],
-               credentials: Optional[credentials.Credentials] = None) -> Any:
-        """Prompt the user to enter some information.
+
+def _ask_prompt(question: str,
+                console: io.IO,
+                validate: Optional[Callable[[str], None]] = None,
+                default: Optional[str] = None) -> str:
+    """Used to ask for a single string value.
+
+    Args:
+        question: Question shown to the user on the console.
+        console: Object to use for user I/O.
+        validate: Function used to check if value provided is valid. It should
+            raise a ValueError if the the value fials to validate.
+        default: Default value if user provides no value. (Presses enter)
+
+    Returns:
+        The value entered by the user.
+    """
+    validate = validate or (lambda x: None)
+    while True:
+        answer = console.ask(question)
+        if default and answer is '':
+            answer = default
+        try:
+            validate(answer)
+            break
+        except ValueError as e:
+            console.error(e)
+
+    return answer
+
+
+def _multiple_choice_prompt(question: str,
+                            options: List[str],
+                            console: io.IO,
+                            default: Optional[str] = None):
+    """Used to prompt user to choose from a list of values.
+
+    Args:
+        question: Question shown to the user on the console. Should have
+            a {} to insert a list of enumerated options.
+        options: Possible values user should choose from.
+        console: Object to use for user I/O.
+        default: Default value if user provides no value. (Presses enter)
+
+    Returns:
+        The choice entered by the user.
+    """
+    options_formatted = [
+        '{}. {}'.format(str(i), opt) for i, opt in enumerate(options, 1)
+    ]
+    options = '\n'.join(options_formatted)
+    answer = console.ask(question.format(options))
+
+    while True:
+        try:
+            _multiple_choice_validate(answer, default, len(options))
+            break
+        except ValueError as e:
+            console.error(e)
+            answer = console.ask(question.format(options))
+
+    return answer
+
+
+def _multiple_choice_validate(s: str, default: Optional[str], len_options: int):
+    """Validates the option chosen is valid.
+
+    Args:
+        s: Value to validate.
+        default: Default value if user provides no value. (Presses enter)
+        len_options: Amount of possible options for the user.
+
+    Raises:
+        ValueError: If the answer is not valid.
+    """
+    if default is not None and s == '':
+        return
+
+    if not str.isnumeric(s):
+        raise ValueError('Please enter a numeric value')
+
+    if 1 <= int(s) <= (len_options + 1):
+        return
+    else:
+        raise ValueError('Value is not in range')
+
+
+def _binary_prompt(question: str, console: io.IO,
+                   default: Optional[str] = None):
+    """Used to prompt user to choose from a yes or no question.
+
+    Args:
+        question: Question shown to the user on the console.
+        console: Object to use for user I/O.
+        default: Default value if user provides no value. (Presses enter)
+    """
+
+    while True:
+        try:
+            answer = console.ask(question)
+            if default and answer is '':
+                answer = default
+                _binary_validate(answer)
+            break
+        except ValueError as e:
+            console.error(e)
+
+    return answer
+
+
+def _binary_validate(s: str):
+    """Ensures value is yes or no.
+
+    Args:
+        s: Value to validate.
+    """
+    if s.lower() not in ['y', 'n']:
+        raise ValueError('Please respond using "y" or "n"')
+
+    return
+
+
+def _password_prompt(question: str, console: io.IO) -> str:
+    """Used to prompt user to choose a password field.
+
+    Args:
+        console: Object to use for user I/O.
+        question: Question shown to the user on the console.
+    """
+    console.tell(question)
+    while True:
+        password1 = console.getpass('Password: ')
+        try:
+            _password_validate(password1)
+        except ValueError as e:
+            console.error(e)
+            continue
+        password2 = console.getpass('Password (again): ')
+        if password1 != password2:
+            console.error('Passwords do not match, please try again')
+            continue
+        return password1
+
+
+def _password_validate(s):
+    """Validates that a string is a valid password.
+
+    Args:
+        s: The string to validate.
+
+    Raises:
+        ValueError: if the input string is not valid.
+    """
+    if len(s) < 5:
+        raise ValueError('Passwords must be at least 6 characters long')
+    allowed_characters = frozenset(string.ascii_letters + string.digits +
+                                   string.punctuation)
+    if frozenset(s).issuperset(allowed_characters):
+        raise ValueError('Invalid character in password: '
+                         'use letters, numbers and punctuation')
+
+    return
+
+
+class TemplatePrompt(object):
+    """Used as a base template for all Parameter Prompts interacting with user.
+
+    They must have a prompt method that calls one of the _x_prompt functions.
+    They must own only one parameter.
+    They must have a validate function.
+    They will validate the value if passed in as a flag.
+    """
+
+    # Parameter must be set for dictionary key
+    PARAMETER = None
+
+    def prompt(self, console: io.IO, step: str,
+               args: Dict[str, Any]) -> Dict[str, Any]:
+        """Handles the business logic and calls the prompts.
 
         Args:
             console: Object to use for user I/O.
-            step_prompt: A prefix showing the current step number e.g. "[1/3]".
-            arguments: The arguments that have already been collected from the
-                user e.g. {"project_id", "project-123"}
-            credentials: The OAuth2 Credentials object to use for api calls
-                during prompt.
+            step: Message to present to user regarding what step they are on.
+            args: Dictionary holding prompts answered by user and set up
+                arguments.
 
-        Returns:
-            The value entered by the user.
-        """
-
-    @staticmethod
-    def validate(s: str, credentials: Optional[credentials.Credentials] = None):
-        """Validates that a string is valid for this prompt type.
-
-        Args:
-            s: The string to validate.
-            credentials: The OAuth2 Credentials object to use for api calls
-                during validation.
-
-        Raises:
-            ValueError: if the input string is not valid.
+        Returns: A Copy of args + the new parameter collected.
         """
         pass
 
+    def _validate(self, val: str):
+        """Checks if the string is valid. Throws a ValueError if not valid."""
+        pass
 
-class NamePrompt(Prompt):
-    """Base class for classes that prompt for some sort of name.
+    def _is_valid_passed_arg(self, console: io.IO, step: str,
+                             value: Optional[str],
+                             validate: Callable[[str], None]) -> bool:
+        """Used to validate if the user passed in a parameter as a flag.
 
-    Subclasses must:
-    1. set _PROMPT to the prompt text.
-    2. implement _default_name()
-    3. implement validate.
-    """
-
-    _PROMPT = None
-
-    @staticmethod
-    @abc.abstractmethod
-    def _default_name(arguments: Dict[str, Any]):
-        """The default name to use."""
-
-    @classmethod
-    def prompt(cls,
-               console: io.IO,
-               step_prompt: str,
-               arguments: Dict[str, Any],
-               credentials: Optional[credentials.Credentials] = None) -> str:
-        """Prompt the user to enter some sort of name.
-
-        Args:
-            console: Object to use for user I/O.
-            step_prompt: A prefix showing the current step number e.g. "[1/3]".
-            arguments: The arguments that have already been collected from the
-                user e.g. {"project_id", "project-123"}
-            credentials: The OAuth2 Credentials object to use for api calls
-                during prompt.
+        All s that retrieve a parameter should call this function first.
+        It requires all s to have implemented validate. The code also
+        will process a passed in paramater as a step. This is used to have a
+        hard coded amount of steps that is easy to manage.
 
         Returns:
-            The value entered by the user.
+            A boolean indicating if the passed in argument is valid.
         """
-        default_name = cls._default_name(arguments)
-        while True:
-            console.tell(('{} {}').format(step_prompt, cls._PROMPT))
-            project_name = console.ask('[{}]: '.format(default_name))
-            if not project_name.strip():
-                project_name = default_name
-            try:
-                cls.validate(project_name)
-            except ValueError as e:
-                console.error(e)
-                continue
-            return project_name
+        if value is None:
+            return False
+
+        try:
+            validate(value)
+        except ValueError as e:
+            console.error(e)
+            return False
+
+        msg = '{} {}: {}'.format(step, self.PARAMETER, value)
+        console.tell(msg)
+        return True
 
 
-class GoogleCloudProjectNamePrompt(NamePrompt):
-    """Allow the user to enter a GCP project name."""
+class StringTemplatePrompt(TemplatePrompt):
+    """Template for a simple string Prompt ."""
 
-    _PROMPT = ('Enter a Google Cloud Platform project name, or leave '
-               'blank to use')
+    PARAMETER = ''
+    PARAMETER_PRETTY = ''
+    DEFAULT_VALUE = ''
+    BASE_MESSAGE = '{} Enter a value for {} or leave blank to use'
+    DEFAUlT_MESSAGE = '[{}]: '
 
-    @classmethod
-    def _default_name(cls, arguments: Dict[str, Any]):
-        return 'Django Project'
+    def prompt(self, console: io.IO, step: str,
+               args: Dict[str, Any]) -> Dict[str, Any]:
+        new_args = copy.deepcopy(args)
+        if self._is_valid_passed_arg(console, step,
+                                     args.get(self.PARAMETER, None),
+                                     self._validate):
+            return new_args
 
-    @classmethod
-    def prompt(cls,
-               console: io.IO,
-               step_prompt: str,
-               arguments: Dict[str, Any],
-               credentials: Optional[credentials.Credentials] = None) -> str:
+        base_message = self.BASE_MESSAGE.format(step, self.PARAMETER_PRETTY)
+        default_message = self.DEFAUlT_MESSAGE.format(self.DEFAULT_VALUE)
+        msg = '\n'.join([base_message, default_message])
+        answer = _ask_prompt(
+            msg, console, self._validate, default=self.DEFAULT_VALUE)
+        new_args[self.PARAMETER] = answer
+        return new_args
 
-        if ('project_creation_mode' not in arguments or
-            (arguments['project_creation_mode'] !=
-             workflow.ProjectCreationMode.MUST_EXIST)):
-            return (super().prompt(console, step_prompt, arguments,
-                                   credentials))
 
-        assert 'project_id' in arguments, 'project_id must be set'
-        project_id = arguments['project_id']
-        project_client = project.ProjectClient.from_credentials(credentials)
-        project_name = project_client.get_project(project_id)['name']
-        message = 'Project name found: {}'.format(project_name)
-        console.tell(('{} {}').format(step_prompt, message))
+class GoogleProjectName(TemplatePrompt):
+
+    PARAMETER = 'project_name'
+
+    def __init__(self, project_client: project.ProjectClient):
+        self.project_client = project_client
+
+    def _validate(self, project_id: str,
+                  project_creation_mode: workflow.ProjectCreationMode
+                 ) -> Callable[[str], None]:
+        """Returns the method that validates the string.
+
+        Args:
+            project_id: Used to retrieve name when project already exists.
+            project_creation_mode: Used to check if project already exists.
+        """
+
+        def helper(s: str):
+            if not (4 <= len(s) <= 30):
+                raise ValueError(
+                    ('Invalid Google Cloud Platform project name "{}": '
+                     'must be between 4 and 30 characters').format(s))
+
+            if self._is_new_project(project_creation_mode):
+                return
+
+            if project_id is None:
+                raise ValueError('Project Id must be set')
+
+            project_name = self.project_client.get_project(project_id)['name']
+            if project_name != s:
+                raise ValueError('Wrong project name given for project id.')
+
+        return helper
+
+    def _handle_new_project(self, console: io.IO, step: str, args: [str, Any]):
+        default_answer = 'Django Project'
+        msg_base = ('{} Enter a Google Cloud Platform project name, or leave '
+                    'blank to use').format(step)
+        msg_default = '[{}]: '.format(default_answer)
+        msg = '\n'.join([msg_base, msg_default])
+        project_id = args.get('project_id', None)
+        project_creation_mode = args.get('project_creation_mode', None)
+        return _ask_prompt(
+            msg,
+            console,
+            self._validate(project_id, project_creation_mode),
+            default=default_answer)
+
+    def _is_new_project(
+            self, project_creation_mode: workflow.ProjectCreationMode) -> bool:
+        must_exist = workflow.ProjectCreationMode.MUST_EXIST
+        return project_creation_mode != must_exist
+
+    def _handle_existing_project(self, console: io.IO, step: str,
+                                 args: Dict[str, Any]) -> str:
+        assert 'project_id' in args, 'project_id must be set'
+        project_id = args['project_id']
+        project_name = self.project_client.get_project(project_id)['name']
+        message = '{} {}: {}'.format(step, self.PARAMETER, project_name)
+        console.tell(message)
         return project_name
 
-    @staticmethod
-    def validate(s, credentials: Optional[credentials.Credentials] = None):
-        """Validates that a string is a valid project name.
+    def prompt(self, console: io.IO, step: str,
+               args: Dict[str, Any]) -> Dict[str, Any]:
+        new_args = copy.deepcopy(args)
+
+        project_id = args.get('project_id', None)
+        project_creation_mode = args.get('project_creation_mode', None)
+        if self._is_valid_passed_arg(
+                console, step, args.get(self.PARAMETER, None),
+                self._validate(project_id, project_creation_mode)):
+            return new_args
+
+        project_creation_mode = args.get('project_creation_mode', None)
+        if self._is_new_project(project_creation_mode):
+            new_args[self.PARAMETER] = self._handle_new_project(
+                console, step, args)
+        else:
+            new_args[self.PARAMETER] = self._handle_existing_project(
+                console, step, args)
+
+        return new_args
+
+
+class GoogleNewProjectId(TemplatePrompt):
+    """Handles Project ID for new projects."""
+
+    PARAMETER = 'project_id'
+
+    def _validate(self, s: str):
+        """Validates that a string is a valid project id.
 
         Args:
             s: The string to validate.
-            credentials: The OAuth2 Credentials object to use for api calls
-                during validation.
 
         Raises:
             ValueError: if the input string is not valid.
         """
-        if not (4 <= len(s) <= 30):
-            raise ValueError(
-                ('Invalid Google Cloud Platform project name "{}": '
-                 'must be between 4 and 30 characters').format(s))
+        if not re.match(r'[a-z][a-z0-9\-]{5,29}', s):
+            raise ValueError(('Invalid Google Cloud Platform Project ID "{}": '
+                              'must be between 6 and 30 characters and contain '
+                              'lowercase letters, digits or hyphens').format(s))
 
-
-class DjangoProjectNamePrompt(NamePrompt):
-    """Allow the user to enter a Django project name."""
-
-    _PROMPT = 'Enter a Django project name, or leave blank to use'
-
-    @classmethod
-    def _default_name(cls, arguments: Dict[str, Any]):
-        return 'mysite'
-
-    @staticmethod
-    def validate(s, credentials: Optional[credentials.Credentials] = None):
-        """Validates that a string is a valid Django project name.
-
-        Args:
-            s: The string to validate.
-            credentials: The OAuth2 Credentials object to use for api calls
-                during validation.
-
-        Raises:
-            ValueError: if the input string is not valid.
-        """
-        if not s.isidentifier():
-            raise ValueError(('Invalid Django project name "{}": '
-                              'must be a valid Python identifier').format(s))
-
-
-class DjangoProjectNameUpdatePrompt(DjangoProjectNamePrompt):
-    """Allow the user to enter a Django project name."""
-
-    _PROMPT = 'Enter the Django project name you want to update.'
-
-
-class DjangoAppNamePrompt(NamePrompt):
-    """Allow the user to enter a Django app name."""
-
-    _PROMPT = 'Enter a Django app name, or leave blank to use'
-
-    @classmethod
-    def _default_name(cls, arguments: Dict[str, Any]):
-        return 'home'
-
-    @staticmethod
-    def validate(s, credentials: Optional[credentials.Credentials] = None):
-        """Validates that a string is a valid Django app name.
-
-        Args:
-            s: The string to validate.
-            credentials: The OAuth2 Credentials object to use for api calls
-                during validation.
-
-        Raises:
-            ValueError: if the input string is not valid.
-        """
-        if not s.isidentifier():
-            raise ValueError(('Invalid Django app name "{}": '
-                              'must be a valid Python identifier').format(s))
-
-
-class DjangoSuperuserLoginPrompt(NamePrompt):
-    """Allow the user to enter a Django superuser login."""
-
-    _PROMPT = 'Enter a name for the Django superuser, or leave blank to use'
-
-    @classmethod
-    def _default_name(cls, arguments: Dict[str, Any]):
-        return 'admin'
-
-    @staticmethod
-    def validate(s, credentials: Optional[credentials.Credentials] = None):
-        """Validates that a string is a valid Django superuser login.
-
-        Args:
-            s: The string to validate.
-            credentials: The OAuth2 Credentials object to use for api calls
-                during validation.
-
-        Raises:
-            ValueError: if the input string is not valid.
-        """
-        if not s.isalnum():
-            raise ValueError(('Invalid Django superuser login "{}": '
-                              'must be a alpha numeric').format(s))
-
-
-class DjangoSuperuserEmailPrompt(NamePrompt):
-    """Allow the user to enter a Django email address."""
-
-    _PROMPT = ('Enter a e-mail address for the Django superuser, '
-               'or leave blank to use')
-
-    @classmethod
-    def _default_name(cls, arguments: Dict[str, Any]):
-        return 'test@example.com'
-
-    @staticmethod
-    def validate(s, credentials: Optional[credentials.Credentials] = None):
-        """Validates that a string is a valid Django superuser email address.
-
-        Args:
-            s: The string to validate.
-            credentials: The OAuth2 Credentials object to use for api calls
-                during validation.
-
-        Raises:
-            ValueError: if the input string is not valid.
-        """
-        if not re.match(r'[^@]+@[^@]+\.[^@]+', s):
-            raise ValueError(('Invalid Django superuser email address "{}": '
-                              'the format should be like '
-                              '"test@example.com"').format(s))
-
-
-class ProjectIdPrompt(Prompt):
-    """Allow the user to enter a GCP project id."""
-
-    @staticmethod
-    def _generate_default_project_id(project_name=None):
+    def _generate_default_project_id(self, project_name=None):
         default_project_id = (project_name or 'django').lower()
         default_project_id = default_project_id.replace(' ', '-')
         if default_project_id[0] not in string.ascii_lowercase:
@@ -295,440 +381,150 @@ class ProjectIdPrompt(Prompt):
         return '{0}-{1}'.format(default_project_id[0:30 - 6 - 1],
                                 random.randint(100000, 1000000))
 
-    @classmethod
-    def prompt(cls,
-               console: io.IO,
-               step_prompt: str,
-               arguments: Dict[str, Any],
-               credentials: Optional[credentials.Credentials] = None) -> str:
-        """Prompt the user to a Google Cloud Platform project id.
+    def prompt(self, console: io.IO, step: str,
+               args: Dict[str, Any]) -> Dict[str, Any]:
+        new_args = copy.deepcopy(args)
+        if self._is_valid_passed_arg(console, step,
+                                     args.get(self.PARAMETER, None),
+                                     self._validate):
+            return new_args
 
-        Args:
-            console: Object to use for user I/O.
-            step_prompt: A prefix showing the current step number e.g. "[1/3]".
-            arguments: The arguments that have already been collected from the
-                user e.g. {"project_id", "project-123"}
-            credentials: The OAuth2 Credentials object to use for api calls
-                during prompt.
-
-        Returns:
-            The value entered by the user.
-        """
-        default_project_id = cls._generate_default_project_id(
-            arguments.get('project_name', None))
-        while True:
-            console.tell(('{} Enter a Google Cloud Platform Project ID, '
-                          'or leave blank to use').format(step_prompt))
-            project_id = console.ask('[{}]: '.format(default_project_id))
-            if not project_id.strip():
-                return default_project_id
-            try:
-                cls.validate(project_id)
-            except ValueError as e:
-                console.error(e)
-                continue
-            return project_id
-
-    @staticmethod
-    def validate(s, credentials: Optional[credentials.Credentials] = None):
-        """Validates that a string is a valid project id.
-
-        Args:
-            s: The string to validate.
-            credentials: The OAuth2 Credentials object to use for api calls
-                during validation.
-
-        Raises:
-            ValueError: if the input string is not valid.
-        """
-        if not re.match(r'[a-z][a-z0-9\-]{5,29}', s):
-            raise ValueError(('Invalid Google Cloud Platform Project ID "{}": '
-                              'must be between 6 and 30 characters and contain '
-                              'lowercase letters, digits or hyphens').format(s))
+        project_name = args.get('project_name', None)
+        default_answer = self._generate_default_project_id(project_name)
+        msg_base = ('{} Enter a Google Cloud Platform Project ID, '
+                    'or leave blank to use').format(step)
+        msg_default = '[{}]: '.format(default_answer)
+        msg = '\n'.join([msg_base, msg_default])
+        answer = _ask_prompt(
+            msg, console, self._validate, default=default_answer)
+        new_args[self.PARAMETER] = answer
+        return new_args
 
 
-class ExistingProjectIdPrompt(ProjectIdPrompt):
-    """Allow the user to enter a GCP project id."""
+class GoogleProjectId(TemplatePrompt):
+    """ that handles fork between Existing and New Projects."""
 
-    @classmethod
-    def prompt(cls,
-               console: io.IO,
-               step_prompt: str,
-               arguments: Dict[str, Any],
-               credentials: Optional[credentials.Credentials] = None) -> str:
+    PARAMETER = 'project_id'
+
+    def __init__(self, project_client: project.ProjectClient):
+        self.project_client = project_client
+
+    def prompt(self, console: io.IO, step: str,
+               args: Dict[str, Any]) -> Dict[str, Any]:
+        prompter = GoogleNewProjectId()
+
+        if args.get('use_existing_project', False):
+            prompter = GoogleExistingProjectId(self.project_client)
+
+        return prompter.prompt(console, step, args)
+
+
+class GoogleExistingProjectId(TemplatePrompt):
+    """Handles Project ID for existing projects."""
+
+    PARAMETER = 'project_id'
+
+    def __init__(self, project_client: project.ProjectClient):
+        self.project_client = project_client
+
+    def prompt(self, console: io.IO, step: str,
+               args: Dict[str, Any]) -> Dict[str, Any]:
         """Prompt the user to a Google Cloud Platform project id.
 
         If the user supplies the project_id as a flag we want to validate that
         it exists. We tell the user to supply a new one if it does not.
 
-        Args:
-            console: Object to use for user I/O.
-            step_prompt: A prefix showing the current step number e.g. "[1/3]".
-            arguments: The arguments that have already been collected from the
-                user e.g. {"project_id", "project-123"}
-            credentials: The OAuth2 Credentials object to use for api calls
-                during prompt.
-
-        Returns:
-            The value entered by the user.
         """
-        project_id = arguments.get('project_id', None)
-        valid_project_id = False
-        while not valid_project_id:
-            if not project_id:
-                console.tell(
-                    ('{} Enter the existing Google Cloud Platform Project ID '
-                     'to use.').format(step_prompt))
-                project_id = console.ask('Project ID: ')
-            try:
-                cls.validate(project_id, credentials)
-                if (arguments.get(
-                        'project_creation_mode',
-                        False) == workflow.ProjectCreationMode.MUST_EXIST):
-                    console.tell(('{} Google Cloud Platform Project ID {}'
-                                  ' is valid').format(step_prompt, project_id))
-                valid_project_id = True
-            except ValueError as e:
-                console.error(e)
-                project_id = None
-                continue
-        return project_id
 
-    @staticmethod
-    def validate(s, credentials: Optional[credentials.Credentials] = None):
+        new_args = copy.deepcopy(args)
+        if self._is_valid_passed_arg(console, step,
+                                     args.get(self.PARAMETER, None),
+                                     self._validate):
+            return new_args
+
+        msg = ('{} Enter the <b>existing<b> Google Cloud Platform Project ID '
+               'to use.').format(step)
+        answer = _ask_prompt(msg, console, self._validate)
+        new_args[self.PARAMETER] = answer
+        return new_args
+
+    def _validate(self, s: str):
         """Validates that a string is a valid project id.
 
         Args:
             s: The string to validate.
-            credentials: The OAuth2 Credentials object to use for api calls
-                during validation.
 
         Raises:
             ValueError: if the input string is not valid.
         """
+
         if not re.match(r'[a-z][a-z0-9\-]{5,29}', s):
             raise ValueError(('Invalid Google Cloud Platform Project ID "{}": '
                               'must be between 6 and 30 characters and contain '
                               'lowercase letters, digits or hyphens').format(s))
 
-        project_client = project.ProjectClient.from_credentials(credentials)
-        if not project_client.project_exists(s):
+        if not self.project_client.project_exists(s):
             raise ValueError('Project {} does not exist'.format(s))
 
 
-class DjangoFilesystemPath(Prompt):
-    """Allow the user to file system path for their project."""
+class CredentialsPrompt(TemplatePrompt):
 
-    @staticmethod
-    def _prompt_replace(console, directory):
-        while True:
-            r = console.ask(("The directory \'{}\' already exists, "
-                             "replace it's contents [y/N]: ").format(directory))
-            r = r.strip().lower() or 'n'
-            if r not in ['n', 'y']:
-                continue
-            return r == 'y'
+    PARAMETER = 'credentials'
 
-    @classmethod
-    def prompt(cls,
-               console: io.IO,
-               step_prompt: str,
-               arguments: Dict[str, Any],
-               credentials: Optional[credentials.Credentials] = None) -> str:
-        """Prompt the user to enter a file system path for their project.
+    def __init__(self, auth_client: auth.AuthClient):
+        self.auth_client = auth_client
 
-        Args:
-            console: Object to use for user I/O.
-            step_prompt: A prefix showing the current step number e.g. "[1/3]".
-            arguments: The arguments that have already been collected from the
-                user e.g. {"project_id", "project-123"}
-            credentials: The OAuth2 Credentials object to use for api calls
-                during prompt.
-
-        Returns:
-            The value entered by the user.
-        """
-        home_dir = os.path.expanduser('~')
-        # TODO: Remove filesystem-unsafe characters. Implement a validation
-        # method that checks for these.
-        default_directory = os.path.join(
-            home_dir,
-            arguments.get('project_name', 'django-project').lower().replace(
-                ' ', '-'))
-
-        while True:
-            console.tell(
-                ('{} Enter a new directory path to store project source, '
-                 'or leave blank to use').format(step_prompt))
-            directory = console.ask('[{}]: '.format(default_directory))
-            if not directory.strip():
-                directory = default_directory
-            try:
-                cls.validate(directory)
-            except ValueError as e:
-                console.error(e)
-                continue
-
-            if os.path.exists(directory):
-                if not cls._prompt_replace(console, directory):
-                    continue
-            return directory
-
-
-class DjangoFilesystemPathUpdate(Prompt):
-    """Allow the user to file system path for their project."""
-
-    @classmethod
-    def prompt(cls,
-               console: io.IO,
-               step_prompt: str,
-               arguments: Dict[str, Any],
-               credentials: Optional[credentials.Credentials] = None) -> str:
-        """Prompt the user to enter a file system path for their project.
-
-        Args:
-            console: Object to use for user I/O.
-            step_prompt: A prefix showing the current step number e.g. "[1/3]".
-            arguments: The arguments that have already been collected from the
-                user e.g. {"project_id", "project-123"}
-            credentials: The OAuth2 Credentials object to use for api calls
-                during prompt.
-
-        Returns:
-            The value entered by the user.
-        """
-        home_dir = os.path.expanduser('~')
-        default_directory = os.path.join(
-            home_dir,
-            arguments.get('project_name', 'django-project').lower().replace(
-                ' ', '-'))
-
-        while True:
-            console.tell(
-                ('{} Enter the directory of the Django project you want to '
-                 'update:'.format(step_prompt)))
-            directory = console.ask('[{}]: '.format(default_directory))
-            if not directory.strip():
-                directory = default_directory
-            directory = os.path.abspath(os.path.expanduser(directory))
-
-            try:
-                cls.validate(directory)
-            except ValueError as e:
-                console.error(e)
-                continue
-
-            return directory
-
-    @staticmethod
-    def validate(s, credentials: Optional[credentials.Credentials] = None):
-        """Validates that a string is a valid directory path.
-
-        Args:
-            s: The string to validate.
-            credentials: The OAuth2 Credentials object to use for api calls
-                during validation.
-
-        Raises:
-            ValueError: if the input string is not valid.
-        """
-        if not os.path.exists(s):
-            raise ValueError(('Path ["{}"] does not exist.').format(s))
-
-        if not utils.is_valid_django_project(s):
-            raise ValueError(
-                ('Path ["{}"] does not contain a valid Django project.'
-                ).format(s))
-
-
-class PasswordPrompt(Prompt):
-    """Base class for classes that prompt for a password.
-
-    Subclasses must:
-    1. implement _get_prompt()
-    2. implement _default_name()
-    3. implement validate()
-    """
-
-    @classmethod
-    @abc.abstractmethod
-    def _get_prompt(cls, arguments: Dict[str, Any]) -> str:
-        pass
-
-    @classmethod
-    def prompt(cls,
-               console: io.IO,
-               step_prompt: str,
-               arguments: Dict[str, Any],
-               credentials: Optional[credentials.Credentials] = None) -> str:
-        """Prompt the user to enter a password.
-
-        Args:
-            console: Object to use for user I/O.
-            step_prompt: A prefix showing the current step number e.g. "[1/3]".
-            arguments: The arguments that have already been collected from the
-                user e.g. {"project_id", "project-123"}
-            credentials: The OAuth2 Credentials object to use for api calls
-                during prompt.
-
-        Returns:
-            The value entered by the user.
-        """
-        console_prompt = cls._get_prompt(arguments)
-        console.tell(('{} {}').format(step_prompt, console_prompt))
-        while True:
-            password1 = console.getpass('Password: ')
-            try:
-                cls.validate(password1)
-            except ValueError as e:
-                console.error(e)
-                continue
-            password2 = console.getpass('Password (again): ')
-            if password1 != password2:
-                console.error('Passwords do not match, please try again')
-                continue
-            return password1
-
-    @staticmethod
-    def validate(s, credentials: Optional[credentials.Credentials] = None):
-        """Validates that a string is a valid password.
-
-        Args:
-            s: The string to validate.
-            credentials: The OAuth2 Credentials object to use for api calls
-                during validation.
-
-        Raises:
-            ValueError: if the input string is not valid.
-        """
-        if len(s) < 5:
-            raise ValueError('Passwords must be at least 6 characters long')
-        allowed_characters = frozenset(string.ascii_letters + string.digits +
-                                       string.punctuation)
-        if frozenset(s).issuperset(allowed_characters):
-            raise ValueError('Invalid character in password: '
-                             'use letters, numbers and punctuation')
-
-
-class PostgresPasswordPrompt(PasswordPrompt):
-    """Allow the user to enter a Django Postgres password."""
-
-    @classmethod
-    def _get_prompt(cls, arguments: Dict[str, Any]) -> str:
-        return 'Enter a password for the default database user "postgres"'
-
-
-class PostgresPasswordUpdatePrompt(PasswordPrompt):
-    """Allow the user to enter a Django Postgres password."""
-
-    @classmethod
-    def _get_prompt(cls, arguments: Dict[str, Any]) -> str:
-        return 'Enter the password for the default database user "postgres"'
-
-    @classmethod
-    def prompt(cls,
-               console: io.IO,
-               step_prompt: str,
-               arguments: Dict[str, Any],
-               credentials: Optional[credentials.Credentials] = None) -> str:
-        """Prompt the user to enter a password.
-
-        Args:
-            console: Object to use for user I/O.
-            step_prompt: A prefix showing the current step number e.g. "[1/3]".
-            arguments: The arguments that have already been collected from the
-                user e.g. {"project_id", "project-123"}
-            credentials: The OAuth2 Credentials object to use for api calls
-                during prompt.
-
-        Returns:
-            The value entered by the user.
-        """
-        console_prompt = cls._get_prompt(arguments)
-        console.tell(('{} {}').format(step_prompt, console_prompt))
-        while True:
-            password = console.getpass('Postgres password: ')
-            try:
-                cls.validate(password)
-            except ValueError as e:
-                console.error(e)
-                continue
-            return password
-
-
-class DjangoSuperuserPasswordPrompt(PasswordPrompt):
-    """Allow the user to enter a password for the Django superuser."""
-
-    @classmethod
-    def _get_prompt(cls, arguments: Dict[str, Any]) -> str:
-        if 'django_superuser_login' in arguments:
-            return 'Enter a password for the Django superuser "{}"'.format(
-                arguments['django_superuser_login'])
-        else:
-            return 'Enter a password for the Django superuser'
-
-
-class CredentialsPrompt(Prompt):
-
-    @classmethod
-    def prompt(cls,
-               console: io.IO,
-               step_prompt: str,
-               arguments: Dict[str, Any],
-               credentials: Optional[credentials.Credentials] = None
-              ) -> credentials.Credentials:
+    def prompt(self, console: io.IO, step: str,
+               args: Dict[str, Any]) -> Dict[str, Any]:
         """Prompt the user for access to the Google credentials.
-
-        Args:
-            console: Object to use for user I/O.
-            step_prompt: A prefix showing the current step number e.g. "[1/3]".
-            arguments: The arguments that have already been collected from the
-                user e.g. {"project_id", "project-123"}
-            credentials: The OAuth2 Credentials object to use for api calls
-                during prompt.
 
         Returns:
             The user's credentials.
         """
+        new_args = copy.deepcopy(args)
+        if self._is_valid_passed_arg(console, step,
+                                     args.get(self.PARAMETER, None),
+                                     self._validate):
+            return new_args
+
         console.tell(
             ('{} In order to deploy your application, you must allow Django '
-             'Deploy to access your Google account.').format(step_prompt))
-        auth_client = auth.AuthClient()
+             'Deploy to access your Google account.').format(step))
         create_new_credentials = True
-        active_account = auth_client.get_active_account()
+        active_account = self.auth_client.get_active_account()
+
+        msg = ('You have logged in with account [{}]. Do you want to '
+               'use it? [Y/n]: ').format(active_account)
+        use_active_credentials = _binary_prompt(msg, console, default='Y')
 
         if active_account:  # The user has already logged in before
-            while True:
-                ans = console.ask(
-                    ('You have logged in with account [{}]. Do you want to '
-                     'use it? [Y/n]: ').format(active_account))
-                ans = ans.lower()
-                if ans not in ['y', 'n', '']:
-                    continue
-                elif ans in ['y', '']:
-                    create_new_credentials = False
-                break
-        if not create_new_credentials:
-            cred = auth_client.get_default_credentials()
-            if cred:
-                return cred
-        return auth_client.create_default_credentials()
+            create_new_credentials = use_active_credentials.lower() == 'n'
+
+        if create_new_credentials:
+            creds = self.auth_client.create_default_credentials()
+        else:
+            creds = self.auth_client.get_default_credentials()
+
+        new_args[self.PARAMETER] = creds
+        return new_args
 
 
-class BillingPrompt(Prompt):
+class BillingPrompt(TemplatePrompt):
     """Allow the user to select a billing account to use for deployment."""
 
-    @staticmethod
+    PARAMETER = 'billing_account_name'
+
+    def __init__(self, billing_client: billing.BillingClient = None):
+        self.billing_client = billing_client
+
     def _get_new_billing_account(
-            console: io.IO, existing_billing_accounts: List[Dict[str, Any]],
-            billing_client: billing.BillingClient) -> str:
+            self, console,
+            existing_billing_accounts: List[Dict[str, Any]]) -> str:
         """Ask the user to create a new billing account and return name of it.
 
         Args:
-            console: Object to use for user I/O.
             existing_billing_accounts: User's billing accounts before creation
                 of new accounts.
-            billing_client: A client to query user's existing billing accounts.
 
         Returns:
             Name of the user's newly created billing account.
@@ -739,7 +535,7 @@ class BillingPrompt(Prompt):
         ]
         console.tell('Waiting for billing account to be created.')
         while True:
-            billing_accounts = billing_client.list_billing_accounts(
+            billing_accounts = self.billing_client.list_billing_accounts(
                 only_open_accounts=True)
             if len(existing_billing_accounts) != len(billing_accounts):
                 billing_account_names = [
@@ -751,97 +547,368 @@ class BillingPrompt(Prompt):
                 return diff[0]
             time.sleep(2)
 
-    @classmethod
-    def prompt(cls,
-               console: io.IO,
-               step_prompt: str,
-               arguments: Dict[str, Any],
-               credentials: Optional[credentials.Credentials] = None) -> str:
+    def _does_project_exist(
+            self, project_creation_mode: Optional[workflow.ProjectCreationMode]
+    ) -> bool:
+        must_exist = workflow.ProjectCreationMode.MUST_EXIST
+        return project_creation_mode == must_exist
+
+    def _has_existing_billing_account(self, console: io.IO, step: str,
+                                      args: Dict[str, Any]) -> (Optional[str]):
+        assert 'project_id' in args, 'project_id must be set'
+        project_id = args['project_id']
+        billing_account = (self.billing_client.get_billing_account(project_id))
+        if not billing_account.get('billingEnabled', False):
+            return None
+
+        msg = ('{} Billing is already enabled on this project.'.format(step))
+        console.tell(msg)
+        return billing_account.get('billingAccountName')
+
+    def _handle_existing_billing_accounts(self, console, billing_accounts):
+        question = ('You have the following existing billing accounts:\n{}\n'
+                    'Please enter your numeric choice or press [Enter] to '
+                    'create a new billing account: ')
+
+        options = [info['displayName'] for info in billing_accounts]
+        new_billing_account = ''
+
+        answer = _multiple_choice_prompt(
+            question, options, console, default=new_billing_account)
+
+        if answer == new_billing_account:
+            return self._get_new_billing_account(console, billing_accounts)
+
+        val = billing_accounts[int(answer) - 1]['name']
+        return val
+
+    def prompt(self, console: io.IO, step: str,
+               args: Dict[str, Any]) -> Dict[str, Any]:
         """Prompt the user for a billing account to use for deployment.
-
-        Args:
-            console: Object to use for user I/O.
-            step_prompt: A prefix showing the current step number e.g. "[1/3]".
-            arguments: The arguments that have already been collected from the
-                user e.g. {"project_id", "project-123"}
-            credentials: The OAuth2 Credentials object to use for api calls
-                during prompt.
-
-        Returns:
-            The user's billing account name.
         """
-        billing_client = billing.BillingClient.from_credentials(credentials)
+        new_args = copy.deepcopy(args)
+        if self._is_valid_passed_arg(console, step,
+                                     args.get(self.PARAMETER, None),
+                                     self._validate):
+            return new_args
 
-        if ('project_creation_mode' in arguments and
-            (arguments['project_creation_mode'] == workflow.ProjectCreationMode.
-             MUST_EXIST)):
+        project_creation_mode = args.get('project_creation_mode', None)
+        if self._does_project_exist(project_creation_mode):
+            billing_account = self._has_existing_billing_account(
+                console, step, args)
+            if billing_account is not None:
+                new_args[self.PARAMETER] = billing_account
+                return new_args
 
-            assert 'project_id' in arguments, 'project_id must be set'
-            project_id = arguments['project_id']
-            billing_account = (billing_client.get_billing_account(project_id))
-            if billing_account.get('billingEnabled', False):
-                msg = ('{} Billing is already enabled on this project.'.format(
-                    step_prompt))
-                console.tell(msg)
-                return billing_account.get('billingAccountName')
-
-        billing_accounts = billing_client.list_billing_accounts(
+        billing_accounts = self.billing_client.list_billing_accounts(
             only_open_accounts=True)
         console.tell(
             ('{} In order to deploy your application, you must enable billing '
-             'for your Google Cloud Project.').format(step_prompt))
+             'for your Google Cloud Project.').format(step))
 
         # If the user has existing billing accounts, we let the user pick one
         if billing_accounts:
-            console.tell('You have the following existing billing accounts: ')
-            for i, account_info in enumerate(billing_accounts):
-                console.tell('{}. {}'.format(i + 1,
-                                             account_info['displayName']))
-            choice = console.ask(
-                ('Please enter your numeric choice or press [Enter] to create '
-                 'a new billing account: '))
-            while True:
-                if not choice:
-                    return cls._get_new_billing_account(
-                        console, billing_accounts, billing_client)
-                if (not choice.isdigit() or int(choice) <= 0 or
-                        int(choice) > len(billing_accounts)):
-                    if len(billing_accounts) == 1:
-                        choice = console.ask(
-                            ('Please enter "1" to use "{}" or press '
-                             '[Enter] to create a new account: ').format(
-                                 billing_accounts[0]['displayName']))
-                    else:
-                        choice = console.ask(
-                            ('Please enter a value between 1 and {} or press '
-                             '[Enter] to create a new account: ').format(
-                                 len(billing_accounts)))
-                else:
-                    return billing_accounts[int(choice) - 1]['name']
-        else:
-            # If the user does not have existing billing accounts, we direct
-            # the user to create a new one.
-            console.tell('You do not have existing billing accounts.')
-            console.ask('Press [Enter] to create a new billing account.')
-            return cls._get_new_billing_account(console, billing_accounts,
-                                                billing_client)
+            val = self._handle_existing_billing_accounts(
+                console, billing_accounts)
+            new_args[self.PARAMETER] = val
+            return new_args
 
-    @staticmethod
-    def validate(s, credentials: Optional[credentials.Credentials] = None):
+        # If the user does not have existing billing accounts, we direct
+        # the user to create a new one.
+        console.tell('You do not have existing billing accounts.')
+        console.ask('Press [Enter] to create a new billing account.')
+        val = self._get_new_billing_account(console, billing_accounts)
+        new_args[self.PARAMETER] = val
+        return new_args
+
+    def validate(self, s):
         """Validates that a string is a valid billing account.
 
         Args:
             s: The string to validate.
-            credentials: The OAuth2 Credentials object to use for api calls
-                during validation.
 
         Raises:
             ValueError: if the input string is not valid.
         """
-        billing_client = billing.BillingClient(credentials)
-        billing_accounts = billing_client.list_billing_accounts()
+
+        billing_accounts = self.billing_client.list_billing_accounts()
         billing_account_names = [
             account['name'] for account in billing_accounts
         ]
         if s not in billing_account_names:
             raise ValueError('The provided billing account does not exist.')
+
+
+class PostgresPasswordPrompt(TemplatePrompt):
+    """Allow the user to enter a Django Postgres password."""
+
+    PARAMETER = 'database_password'
+
+    def prompt(self, console: io.IO, step: str,
+               args: Dict[str, Any]) -> Dict[str, Any]:
+        new_args = copy.deepcopy(args)
+        if self._is_valid_passed_arg(console, step,
+                                     args.get(self.PARAMETER, None),
+                                     self._validate):
+            return new_args
+
+        msg = 'Enter a password for the default database user "postgres"'
+        question = '{} {}'.format(step, msg)
+        password = _password_prompt(question, console)
+        new_args[self.PARAMETER] = password
+        return new_args
+
+    def _validate(self, s: str):
+        _password_validate(s)
+
+
+class DjangoFilesystemPath(TemplatePrompt):
+    """Allow the user to file system path for their project."""
+
+    def __init__(self, update: Optional[bool] = False):
+        self.update = update
+
+    PARAMETER = 'django_directory_path'
+
+    def _ask_to_replace(self, console, directory):
+        msg = (('The directory \'{}\' already exists, '
+                'replace it\'s contents [y/N]: ').format(directory))
+        return _ask_prompt(msg, console, default='n')
+
+    def _ask_for_directory(self, console, step, args) -> str:
+        base_msg = ('{} Enter a new directory path to store project source, '
+                    'or leave blank to use').format(step)
+
+        home_dir = os.path.expanduser('~')
+        # TODO: Remove filesystem-unsafe characters. Implement a validation
+        # method that checks for these.
+        default_dir = os.path.join(
+            home_dir,
+            args.get('project_name', 'django-project').lower().replace(
+                ' ', '-'))
+        default_msg = '[{}]: '.format(default_dir)
+
+        msg = '\n'.join([base_msg, default_msg])
+        return _ask_prompt(msg, console, default=default_dir)
+
+    def prompt(self, console: io.IO, step: str,
+               args: Dict[str, Any]) -> Dict[str, Any]:
+        """Prompt the user to enter a file system path for their project."""
+        new_args = copy.deepcopy(args)
+        while True:
+            directory = self._ask_for_directory(console, step, args)
+            if os.path.exists(directory):
+                replace = self._ask_to_replace(console, directory)
+                if replace.lower() == 'n':
+                    continue
+            break
+
+        new_args[self.PARAMETER] = directory
+        return new_args
+
+    def _validate(self, s: str):
+        """Validates that a string is a valid Django project path.
+
+        Args:
+            s: The string to validate.
+
+        Raises:
+            ValueError: if the input string is not valid.
+        """
+        if not self.update:
+            return
+
+        if not os.path.exists(s):
+            raise ValueError(('Path ["{}"] does not exist.').format(s))
+
+        if not utils.is_valid_django_project(s):
+            raise ValueError(
+                ('Path ["{}"] does not contain a valid Django project.'
+                ).format(s))
+
+
+class DjangoProjectNamePrompt(StringTemplatePrompt):
+    """Allow the user to enter a Django project name."""
+
+    PARAMETER = 'django_project_name'
+    PARAMETER_PRETTY = 'Django project name'
+    DEFAULT_VALUE = 'mysite'
+
+    def _validate(self, s: str):
+        """Validates that a string is a valid Django project name.
+
+        Args:
+            s: The string to validate.
+
+        Raises:
+            ValueError: if the input string is not valid.
+        """
+        if not s.isidentifier():
+            raise ValueError(('Invalid Django project name "{}": '
+                              'must be a valid Python identifier').format(s))
+
+
+class DjangoAppNamePrompt(StringTemplatePrompt):
+    """Allow the user to enter a Django project name."""
+
+    PARAMETER = 'django_app_name'
+    PARAMETER_PRETTY = 'Django app name'
+    DEFAULT_VALUE = 'home'
+
+    def _validate(self, s: str):
+        """Validates that a string is a valid Django project name.
+
+        Args:
+            s: The string to validate.
+
+        Raises:
+            ValueError: if the input string is not valid.
+        """
+        if not s.isidentifier():
+            raise ValueError(('Invalid Django project name "{}": '
+                              'must be a valid Python identifier').format(s))
+
+
+class DjangoSuperuserLoginPrompt(StringTemplatePrompt):
+    """Allow the user to enter a Django superuser login."""
+
+    PARAMETER = 'django_superuser_login'
+    PARAMETER_PRETTY = 'Django superuser login name'
+    DEFAULT_VALUE = 'admin'
+
+    def _validate(self, s: str):
+        """Validates that a string is a valid Django superuser login.
+
+        Args:
+            s: The string to validate.
+
+        Raises:
+            ValueError: if the input string is not valid.
+        """
+        if not s.isalnum():
+            raise ValueError(('Invalid Django superuser login "{}": '
+                              'must be a alpha numeric').format(s))
+
+
+class DjangoSuperuserPasswordPrompt(TemplatePrompt):
+    """Allow the user to enter a password for the Django superuser."""
+
+    PARAMETER = 'django_superuser_password'
+
+    def _get_prompt(self, arguments: Dict[str, Any]) -> str:
+        if 'django_superuser_login' in arguments:
+            return 'Enter a password for the Django superuser "{}"'.format(
+                arguments['django_superuser_login'])
+        else:
+            return 'Enter a password for the Django superuser'
+
+    def prompt(self, console: io.IO, step: str,
+               args: Dict[str, Any]) -> Dict[str, Any]:
+        new_args = copy.deepcopy(args)
+        if self._is_valid_passed_arg(console, step,
+                                     args.get(self.PARAMETER, None),
+                                     self._validate):
+            return new_args
+
+        msg = self._get_prompt(args)
+        question = '{} {}'.format(step, msg)
+        answer = _password_prompt(question, console)
+        new_args[self.PARAMETER] = answer
+        return new_args
+
+    def _validate(self, s: str):
+        return _password_validate(s)
+
+
+class DjangoSuperuserEmailPrompt(StringTemplatePrompt):
+    """Allow the user to enter a Django email address."""
+
+    PARAMETER = 'django_superuser_email'
+    PARAMETER_PRETTY = 'Django superuser email'
+    DEFAULT_VALUE = 'test@example.com'
+
+    def _validate(self, s: str):
+        """Validates that a string is a valid Django superuser email address.
+
+        Args:
+            s: The string to validate.
+
+        Raises:
+            ValueError: if the input string is not valid.
+        """
+        if not re.match(r'[^@]+@[^@]+\.[^@]+', s):
+            raise ValueError(('Invalid Django superuser email address "{}": '
+                              'the format should be like '
+                              '"test@example.com"').format(s))
+
+
+class RootPrompt(object):
+    """Class at the top level that instantiates all of the Prompts."""
+
+    NEW_PROMPT_ORDER = [
+        'project_id',
+        'project_name',
+        'billing_account_name',
+        'database_password',
+        'django_directory_path',
+        'django_project_name',
+        'django_app_name',
+        'django_superuser_login',
+        'django_superuser_password',
+        'django_superuser_email',
+    ]
+
+    UPDATE_PROMPT_ORDER = [
+        'database_password',
+        'django_directory_path',
+    ]
+
+    def _get_creds(self, console: io.IO, first_step: str, args: Dict[str, Any]):
+        auth_client = auth.AuthClient()
+        return CredentialsPrompt(auth_client).prompt(console, first_step,
+                                                     args)['credentials']
+
+    def _setup_prompts(self, creds) -> Dict[str, TemplatePrompt]:
+        project_client = project.ProjectClient.from_credentials(creds)
+        billing_client = billing.BillingClient.from_credentials(creds)
+
+        return {
+            'project_id': GoogleProjectId(project_client),
+            'project_name': GoogleProjectName(project_client),
+            'billing_account_name': BillingPrompt(billing_client),
+            'database_password': PostgresPasswordPrompt(),
+            'django_directory_path': DjangoFilesystemPath(),
+            'django_directory_path_update': DjangoFilesystemPath(update=True),
+            'django_project_name': DjangoProjectNamePrompt(),
+            'django_app_name': DjangoAppNamePrompt(),
+            'django_superuser_login': DjangoSuperuserLoginPrompt(),
+            'django_superuser_password': DjangoSuperuserPasswordPrompt(),
+            'django_superuser_email': DjangoSuperuserEmailPrompt()
+        }
+
+    def prompt(self, command: Command, console: io.IO,
+               args: Dict[str, Any]) -> Dict[str, Any]:
+        new_args = copy.deepcopy(args)
+        if new_args.get('use_existing_project', False):
+            new_args['project_creation_mode'] = (
+                workflow.ProjectCreationMode.MUST_EXIST)
+
+        prompt_order = []
+        if command == Command.NEW:
+            prompt_order = self.NEW_PROMPT_ORDER
+        elif command == Command.UPDATE:
+            prompt_order = self.UPDATE_PROMPT_ORDER
+
+        total_steps = len(prompt_order) + 1
+        step_template = '<b>[{}/{}]</b>'
+        first_step = step_template.format(1, total_steps)
+
+        creds = self._get_creds(console, first_step, args)
+        new_args['credentials'] = creds
+        required_parameters_to_prompt = self._setup_prompts(creds)
+        for i, prompt in enumerate(prompt_order, 2):
+            step = step_template.format(i, total_steps)
+            new_args = required_parameters_to_prompt[prompt].prompt(
+                console, step, new_args)
+
+        return new_args
