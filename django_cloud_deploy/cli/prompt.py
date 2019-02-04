@@ -900,7 +900,7 @@ class RootPrompt(object):
 
     UPDATE_PROMPT_ORDER = [
         'database_password',
-        'django_directory_path',
+        'django_directory_path_update',
     ]
 
     def _get_creds(self, console: io.IO, first_step: str, args: Dict[str, Any]):
