@@ -442,7 +442,7 @@ class GoogleNewProjectId(TemplatePrompt):
 
 
 class GoogleProjectId(TemplatePrompt):
-    """ that handles fork between Existing and New Projects."""
+    """Logic that handles fork between Existing and New Projects."""
 
     PARAMETER = 'project_id'
 
@@ -703,10 +703,7 @@ class PostgresPasswordPrompt(TemplatePrompt):
 
 
 class DjangoFilesystemPath(TemplatePrompt):
-    """Allow the user to file system path for their project."""
-
-    def __init__(self, update: Optional[bool] = False):
-        self.update = update
+    """Allow the user to indicate the file system path for their project."""
 
     PARAMETER = 'django_directory_path'
 
@@ -735,12 +732,61 @@ class DjangoFilesystemPath(TemplatePrompt):
                args: Dict[str, Any]) -> Dict[str, Any]:
         """Prompt the user to enter a file system path for their project."""
         new_args = copy.deepcopy(args)
+
+        if self._is_valid_passed_arg(console, step,
+                                     args.get(self.PARAMETER, None),
+                                     self._validate):
+            return new_args
+
         while True:
             directory = self._ask_for_directory(console, step, args)
             if os.path.exists(directory):
                 replace = self._ask_to_replace(console, directory)
                 if replace.lower() == 'n':
                     continue
+            break
+
+        new_args[self.PARAMETER] = directory
+        return new_args
+
+
+class DjangoFilesystemPathUpdate(TemplatePrompt):
+    """Allow the user to indicate the file system path for their project."""
+
+    PARAMETER = 'django_directory_path'
+
+    def _ask_for_directory(self, console, step, args) -> str:
+        base_msg = ('{} Enter the django project directory path'
+                    'or leave blank to use').format(step)
+
+        home_dir = os.path.expanduser('~')
+        # TODO: Remove filesystem-unsafe characters. Implement a validation
+        # method that checks for these.
+        default_dir = os.path.join(
+            home_dir,
+            args.get('project_name', 'django-project').lower().replace(
+                ' ', '-'))
+        default_msg = '[{}]: '.format(default_dir)
+
+        msg = '\n'.join([base_msg, default_msg])
+        return _ask_prompt(msg, console, default=default_dir)
+
+    def prompt(self, console: io.IO, step: str,
+               args: Dict[str, Any]) -> Dict[str, Any]:
+        """Prompt the user to enter a file system path for their project."""
+        new_args = copy.deepcopy(args)
+        if self._is_valid_passed_arg(console, step,
+                                     args.get(self.PARAMETER, None),
+                                     self._validate):
+            return new_args
+
+        while True:
+            directory = self._ask_for_directory(console, step, args)
+            try:
+                self._validate(directory)
+            except ValueError as e:
+                console.error(e)
+                continue
             break
 
         new_args[self.PARAMETER] = directory
@@ -755,9 +801,6 @@ class DjangoFilesystemPath(TemplatePrompt):
         Raises:
             ValueError: if the input string is not valid.
         """
-        if not self.update:
-            return
-
         if not os.path.exists(s):
             raise ValueError(('Path ["{}"] does not exist.').format(s))
 
@@ -918,7 +961,7 @@ class RootPrompt(object):
             'billing_account_name': BillingPrompt(billing_client),
             'database_password': PostgresPasswordPrompt(),
             'django_directory_path': DjangoFilesystemPath(),
-            'django_directory_path_update': DjangoFilesystemPath(update=True),
+            'django_directory_path_update': DjangoFilesystemPathUpdate(),
             'django_project_name': DjangoProjectNamePrompt(),
             'django_app_name': DjangoAppNamePrompt(),
             'django_superuser_login': DjangoSuperuserLoginPrompt(),
