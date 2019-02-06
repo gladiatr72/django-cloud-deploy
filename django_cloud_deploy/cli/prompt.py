@@ -753,7 +753,7 @@ class DjangoFilesystemPath(TemplatePrompt):
 class DjangoFilesystemPathUpdate(TemplatePrompt):
     """Allow the user to indicate the file system path for their project."""
 
-    PARAMETER = 'django_directory_path'
+    PARAMETER = 'django_directory_path_update'
 
     def _ask_for_directory(self, console, step, args) -> str:
         base_msg = ('{} Enter the django project directory path'
