@@ -1,3 +1,17 @@
+#
+# Licensed under the Apache License, Versconsolen 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITconsoleNS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissconsolens and
+# limitatconsolens under the License.
+"""Prompts the user for information e.g. project name."""
+
 import abc
 import copy
 import enum
@@ -32,7 +46,7 @@ def _ask_prompt(question: str,
         question: Question shown to the user on the console.
         console: Object to use for user I/O.
         validate: Function used to check if value provided is valid. It should
-            raise a ValueError if the the value fials to validate.
+            raise a ValueError if the the value fails to validate.
         default: Default value if user provides no value. (Presses enter)
 
     Returns:
@@ -41,7 +55,7 @@ def _ask_prompt(question: str,
     validate = validate or (lambda x: None)
     while True:
         answer = console.ask(question)
-        if default and answer is '':
+        if default and not answer:
             answer = default
         try:
             validate(answer)
@@ -55,7 +69,7 @@ def _ask_prompt(question: str,
 def _multiple_choice_prompt(question: str,
                             options: List[str],
                             console: io.IO,
-                            default: Optional[str] = None):
+                            default: Optional[str] = None) -> str:
     """Used to prompt user to choose from a list of values.
 
     Args:
@@ -96,7 +110,7 @@ def _multiple_choice_validate(s: str, default: Optional[str], len_options: int):
     Raises:
         ValueError: If the answer is not valid.
     """
-    if default is not None and s == '':
+    if default is not None and not s:
         return
 
     if not str.isnumeric(s):
@@ -109,19 +123,22 @@ def _multiple_choice_validate(s: str, default: Optional[str], len_options: int):
 
 
 def _binary_prompt(question: str, console: io.IO,
-                   default: Optional[str] = None):
+                   default: Optional[str] = None) -> str:
     """Used to prompt user to choose from a yes or no question.
 
     Args:
         question: Question shown to the user on the console.
         console: Object to use for user I/O.
         default: Default value if user provides no value. (Presses enter)
+
+    Returns:
+        The choice entered by the user.
     """
 
     while True:
         try:
             answer = console.ask(question)
-            if default and answer is '':
+            if default and not answer:
                 answer = default
                 _binary_validate(answer)
             break
@@ -149,6 +166,9 @@ def _password_prompt(question: str, console: io.IO) -> str:
     Args:
         console: Object to use for user I/O.
         question: Question shown to the user on the console.
+
+    Returns:
+        The password provided by the user.
     """
     console.tell(question)
     while True:
@@ -278,7 +298,7 @@ class StringTemplatePrompt(TemplatePrompt):
     PARAMETER = ''
     DEFAULT_VALUE = ''
     MESSAGE = ''
-    DEFAUlT_MESSAGE = '[{}]: '
+    DEFAULT_MESSAGE = '[{}]: '
 
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
@@ -289,7 +309,7 @@ class StringTemplatePrompt(TemplatePrompt):
             return new_args
 
         base_message = self.MESSAGE.format(step)
-        default_message = self.DEFAUlT_MESSAGE.format(self.DEFAULT_VALUE)
+        default_message = self.DEFAULT_MESSAGE.format(self.DEFAULT_VALUE)
         msg = '\n'.join([base_message, default_message])
         answer = _ask_prompt(
             msg, console, self._validate, default=self.DEFAULT_VALUE)
