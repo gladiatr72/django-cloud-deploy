@@ -515,7 +515,7 @@ class CredentialsPrompt(TemplatePrompt):
         new_args = copy.deepcopy(args)
         if self._is_valid_passed_arg(console, step,
                                      args.get(self.PARAMETER, None),
-                                     self._validate):
+                                     lambda x: x):
             return new_args
 
         console.tell(
@@ -726,7 +726,7 @@ class DjangoFilesystemPath(TemplatePrompt):
 
         if self._is_valid_passed_arg(console, step,
                                      args.get(self.PARAMETER, None),
-                                     self._validate):
+                                     lambda x: x):
             return new_args
 
         while True:
