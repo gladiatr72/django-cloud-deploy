@@ -276,9 +276,8 @@ class StringTemplatePrompt(TemplatePrompt):
     """Template for a simple string Prompt ."""
 
     PARAMETER = ''
-    PARAMETER_PRETTY = ''
     DEFAULT_VALUE = ''
-    BASE_MESSAGE = '{} Enter a value for {} or leave blank to use'
+    MESSAGE = ''
     DEFAUlT_MESSAGE = '[{}]: '
 
     def prompt(self, console: io.IO, step: str,
@@ -289,7 +288,7 @@ class StringTemplatePrompt(TemplatePrompt):
                                      self._validate):
             return new_args
 
-        base_message = self.BASE_MESSAGE.format(step, self.PARAMETER_PRETTY)
+        base_message = self.MESSAGE.format(step)
         default_message = self.DEFAUlT_MESSAGE.format(self.DEFAULT_VALUE)
         msg = '\n'.join([base_message, default_message])
         answer = _ask_prompt(
@@ -805,7 +804,7 @@ class DjangoProjectNamePrompt(StringTemplatePrompt):
     """Allow the user to enter a Django project name."""
 
     PARAMETER = 'django_project_name'
-    PARAMETER_PRETTY = 'Django project name'
+    MESSAGE = '{} Enter a Django project name or leave blank to use'
     DEFAULT_VALUE = 'mysite'
 
     def _validate(self, s: str):
@@ -826,7 +825,7 @@ class DjangoAppNamePrompt(StringTemplatePrompt):
     """Allow the user to enter a Django project name."""
 
     PARAMETER = 'django_app_name'
-    PARAMETER_PRETTY = 'Django app name'
+    MESSAGE = '{} Enter a Django app name or leave blank to use'
     DEFAULT_VALUE = 'home'
 
     def _validate(self, s: str):
@@ -847,7 +846,7 @@ class DjangoSuperuserLoginPrompt(StringTemplatePrompt):
     """Allow the user to enter a Django superuser login."""
 
     PARAMETER = 'django_superuser_login'
-    PARAMETER_PRETTY = 'Django superuser login name'
+    MESSAGE = '{} Enter a Django superuser login name or leave blank to use'
     DEFAULT_VALUE = 'admin'
 
     def _validate(self, s: str):
@@ -898,7 +897,8 @@ class DjangoSuperuserEmailPrompt(StringTemplatePrompt):
     """Allow the user to enter a Django email address."""
 
     PARAMETER = 'django_superuser_email'
-    PARAMETER_PRETTY = 'Django superuser email'
+    MESSAGE = ('{} Enter an email adress for the Django superuser '
+               'or leave blank to use')
     DEFAULT_VALUE = 'test@example.com'
 
     def _validate(self, s: str):
