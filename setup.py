@@ -31,7 +31,7 @@ install_requires = [
     'urllib3==1.23',  # https://github.com/requests/requests/issues/4830
     'oauth2client>=4.1.2',
     'django>=2.1',
-    'backoff>=1.6.0',
+    'backoff>=1.8.0',
     'jinja2>=2.10',
     'google-cloud-resource-manager>=0.28.1',
     'docker>=3.4.1',
@@ -42,7 +42,9 @@ install_requires = [
     'pexpect>=4.6.0',
     'psycopg2-binary>=2.7.5',
     'google-api-python-client>=1.7.4',
+    'google-auth-httplib2>=0.0.3',
     'google-cloud-logging>=1.8.0',
+    'progressbar2>=3.38.0',
     'portpicker>=1.2.0',
 ]
 

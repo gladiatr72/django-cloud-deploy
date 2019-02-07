@@ -6,6 +6,7 @@ on public clouds
 (e.g. [Kubernetes Engine](https://cloud.google.com/kubernetes-engine/)).
 
 Currently, **Django Deploy** can only
+- Deploy to [Google App Engine](https://cloud.google.com/appengine/).
 - Deploy to [Kubernetes Engine](https://cloud.google.com/kubernetes-engine/).
 - Deploy applications created using its own template code.
 
@@ -48,7 +49,7 @@ Password (again):
 # Getting Started
 
 For detailed instructions on how to use **Django Deploy**, see the
-[Getting Started Guide](https://github.com/GoogleCloudPlatform/django-cloud-deploy/blob/master/GETTING-STARTED.md).
+[Quickstart](https://github.com/GoogleCloudPlatform/django-cloud-deploy/blob/master/QUICKSTART.md).
 
 # Development Workflow (Linux)
 
