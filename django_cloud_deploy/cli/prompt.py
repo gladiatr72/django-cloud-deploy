@@ -542,7 +542,7 @@ class DjangoFilesystemPathUpdate(Prompt):
 
 
 class DjangoFilesystemPathDeploy(Prompt):
-    """Allow the user to file system path for their project."""
+    """Allow the user to specify the file system path of their project."""
 
     @classmethod
     def prompt(cls,

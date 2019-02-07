@@ -71,7 +71,8 @@ def main():
     update.add_arguments(update_parser)
     cloudify_parser = subparsers.add_parser(
         'cloudify',
-        description=('Deploys an existing Django project.'))
+        description=('Modifies the settings for an existing Django projects'
+                     'and deploys it to the cloud.'))
     cloudify_parser.set_defaults(func=_cloudify)
     cloudify.add_arguments(cloudify_parser)
     if len(sys.argv) == 1:
