@@ -203,11 +203,6 @@ class Prompt(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def _validate(self, val: str):
-        """Checks if the string is valid. Throws a ValueError if not valid."""
-        pass
-
-    @abc.abstractmethod
     def _is_valid_passed_arg(self, console: io.IO, step: str,
                              value: Optional[str],
                              validate: Callable[[str], None]) -> bool:
@@ -248,10 +243,6 @@ class TemplatePrompt(Prompt):
 
         Returns: A Copy of args + the new parameter collected.
         """
-        pass
-
-    def _validate(self, val: str):
-        """Checks if the string is valid. Throws a ValueError if not valid."""
         pass
 
     def _is_valid_passed_arg(self, console: io.IO, step: str,
