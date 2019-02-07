@@ -672,7 +672,7 @@ class BillingPrompt(TemplatePrompt):
         new_args[self.PARAMETER] = val
         return new_args
 
-    def validate(self, s):
+    def _validate(self, s):
         """Validates that a string is a valid billing account.
 
         Args:
