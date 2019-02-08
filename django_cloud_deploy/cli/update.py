@@ -14,7 +14,6 @@
 """Create and deploy a new Django project on GKE."""
 
 import argparse
-import sys
 
 from django_cloud_deploy import tool_requirements
 from django_cloud_deploy.cli import io
