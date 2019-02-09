@@ -92,7 +92,8 @@ class AuthClient(object):
         assert gcloud_path, 'gcloud could not be found'
 
         command = [
-            gcloud_path, 'info', '--format=value(config.paths.global_config_dir)'
+            gcloud_path, 'info',
+            '--format=value(config.paths.global_config_dir)'
         ]
         gcloud_config_path = subprocess.check_output(
             command, universal_newlines=True).rstrip()
