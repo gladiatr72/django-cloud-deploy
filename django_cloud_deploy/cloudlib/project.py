@@ -117,17 +117,6 @@ class ProjectClient(object):
             raise ProjectError(
                 'Project "{}" is not successfully created.'.format(project_id))
 
-    def create_and_set_project(self, project_id: str, project_name: str):
-        self.create_project(project_id, project_name)
-        self._set_gcloud_project(project_id)
-
-    def set_existing_project(self, project_id: str):
-        """Set an existing GCP project as the active project."""
-        if self.project_exists(project_id):
-            self._set_gcloud_project(project_id)
-        else:
-            raise ProjectError('project "{}" does not exist'.format(project_id))
-
     # The SLO is 30s at the 90th percentile:
     # https://cloud.google.com/resource-manager/reference/rest/v1/projects/create
     @backoff.on_predicate(
