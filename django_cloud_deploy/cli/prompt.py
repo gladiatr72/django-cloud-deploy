@@ -16,6 +16,7 @@
 import abc
 import copy
 import enum
+import functools
 import os.path
 import random
 import re
@@ -70,7 +71,7 @@ def _ask_prompt(question: str,
 def _multiple_choice_prompt(question: str,
                             options: List[str],
                             console: io.IO,
-                            default: Optional[str] = None) -> str:
+                            default: Optional[int] = None) -> int:
     """Used to prompt user to choose from a list of values.
 
     Args:
@@ -80,9 +81,18 @@ def _multiple_choice_prompt(question: str,
         console: Object to use for user I/O.
         default: Default value if user provides no value. (Presses enter)
 
+    Typical usage:
+        # User can press enter if user doesn't want anything.
+        choice = _multiple_choice_prompt('Choose an option:\n{}\n',
+                                         ['Chicken', 'Salad', 'Burger'],
+                                         console,
+                                         default=None)
+
     Returns:
-        The choice entered by the user.
+        The integer choice entered by the user of the options array.
     """
+    assert '{}' in question
+
     options_formatted = [
         '{}. {}'.format(str(i), opt) for i, opt in enumerate(options, 1)
     ]
@@ -91,27 +101,29 @@ def _multiple_choice_prompt(question: str,
 
     while True:
         try:
-            _multiple_choice_validate(answer, default, len(options))
+            _multiple_choice_validate(answer, len(options))
             break
         except ValueError as e:
             console.error(e)
             answer = console.ask(question.format(options))
 
-    return answer
+    if not answer:
+        return default
+
+    return int(answer) - 1
 
 
-def _multiple_choice_validate(s: str, default: Optional[str], len_options: int):
+def _multiple_choice_validate(s: str, len_options: int):
     """Validates the option chosen is valid.
 
     Args:
         s: Value to validate.
-        default: Default value if user provides no value. (Presses enter)
         len_options: Amount of possible options for the user.
 
     Raises:
         ValueError: If the answer is not valid.
     """
-    if default is not None and not s:
+    if not s:
         return
 
     if not str.isnumeric(s):
@@ -120,7 +132,7 @@ def _multiple_choice_validate(s: str, default: Optional[str], len_options: int):
     if 1 <= int(s) <= (len_options + 1):
         return
     else:
-        raise ValueError('Value is not in range')
+        raise ValueError('Please enter a value between {} and {}'.format(1, len_options + 1))
 
 
 def _binary_prompt(question: str, console: io.IO,
@@ -133,15 +145,17 @@ def _binary_prompt(question: str, console: io.IO,
         default: Default value if user provides no value. (Presses enter)
 
     Returns:
-        The choice entered by the user.
+        The choice entered by the user. One of 'y' or 'n'.
     """
 
     while True:
+        answer = console.ask(question).lower()
+
+        if default and not answer:
+            return default
+
         try:
-            answer = console.ask(question)
-            if default and not answer:
-                answer = default
-                _binary_validate(answer)
+            _binary_validate(answer)
             break
         except ValueError as e:
             console.error(e)
@@ -211,15 +225,17 @@ class Prompt(abc.ABC):
     @abc.abstractmethod
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
-        """Handles the business logic and calls the prompts.
+        """Prompts the user if the required argument isn't already present.
 
         Args:
             console: Object to use for user I/O.
             step: Message to present to user regarding what step they are on.
-            args: Dictionary holding prompts answered by user and set up
-                arguments.
+                e.g. "[1 of 12]"
+            args: Dictionary holding the results of previous prompts and
+                command-line arguments.
 
-        Returns: A Copy of args + the new parameter collected.
+        Returns:
+            A copy of args plus new argument provided by this prompt.
         """
         pass
 
@@ -269,12 +285,12 @@ class TemplatePrompt(Prompt):
     def _is_valid_passed_arg(self, console: io.IO, step: str,
                              value: Optional[str],
                              validate: Callable[[str], None]) -> bool:
-        """Used to validate if the user passed in a parameter as a flag.
+        """Checks if the passed in argument via the command line is valid.
 
-        All s that retrieve a parameter should call this function first.
-        It requires all s to have implemented validate. The code also
+        All prompts that collect a parameter should call this function first.
+        It uses the validate function of the prompt. The code also
         will process a passed in paramater as a step. This is used to have a
-        hard coded amount of steps that is easy to manage.
+        static amount of steps that is easier to manage.
 
         Returns:
             A boolean indicating if the passed in argument is valid.
@@ -294,12 +310,16 @@ class TemplatePrompt(Prompt):
 
 
 class StringTemplatePrompt(TemplatePrompt):
-    """Template for a simple string Prompt ."""
+    """Template for a simple string Prompt.
+
+    Any prompt that only needs to ask the user for a value without additional
+    branching or logic should derive from this class. Classes inheriting from
+    this should set the variables below.
+    """
 
     PARAMETER = ''
     DEFAULT_VALUE = ''
     MESSAGE = ''
-    DEFAULT_MESSAGE = '[{}]: '
 
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
@@ -310,7 +330,7 @@ class StringTemplatePrompt(TemplatePrompt):
             return new_args
 
         base_message = self.MESSAGE.format(step)
-        default_message = self.DEFAULT_MESSAGE.format(self.DEFAULT_VALUE)
+        default_message = '[{}]: '.format(self.DEFAULT_VALUE)
         msg = '\n'.join([base_message, default_message])
         answer = _ask_prompt(
             msg, console, self._validate, default=self.DEFAULT_VALUE)
@@ -326,32 +346,29 @@ class GoogleProjectName(TemplatePrompt):
         self.project_client = project_client
 
     def _validate(self, project_id: str,
-                  project_creation_mode: workflow.ProjectCreationMode
-                 ) -> Callable[[str], None]:
+                  project_creation_mode: workflow.ProjectCreationMode,
+                  s: str):
         """Returns the method that validates the string.
 
         Args:
             project_id: Used to retrieve name when project already exists.
             project_creation_mode: Used to check if project already exists.
+            s: The string to validate
         """
+        if not (4 <= len(s) <= 30):
+            raise ValueError(
+                ('Invalid Google Cloud Platform project name "{}": '
+                 'must be between 4 and 30 characters').format(s))
 
-        def helper(s: str):
-            if not (4 <= len(s) <= 30):
-                raise ValueError(
-                    ('Invalid Google Cloud Platform project name "{}": '
-                     'must be between 4 and 30 characters').format(s))
+        if self._is_new_project(project_creation_mode):
+            return
 
-            if self._is_new_project(project_creation_mode):
-                return
+        assert project_id is not None
 
-            if project_id is None:
-                raise ValueError('Project Id must be set')
+        project_name = self.project_client.get_project(project_id)['name']
+        if project_name != s:
+            raise ValueError('Wrong project name given for project id.')
 
-            project_name = self.project_client.get_project(project_id)['name']
-            if project_name != s:
-                raise ValueError('Wrong project name given for project id.')
-
-        return helper
 
     def _handle_new_project(self, console: io.IO, step: str, args: [str, Any]):
         default_answer = 'Django Project'
@@ -360,11 +377,14 @@ class GoogleProjectName(TemplatePrompt):
         msg_default = '[{}]: '.format(default_answer)
         msg = '\n'.join([msg_base, msg_default])
         project_id = args.get('project_id', None)
-        project_creation_mode = args.get('project_creation_mode', None)
+        mode = args.get('project_creation_mode', None)
+        validate = functools.partial(self._validate,
+                                     project_id=project_id,
+                                     project_creation_mode=mode)
         return _ask_prompt(
             msg,
             console,
-            self._validate(project_id, project_creation_mode),
+            validate,
             default=default_answer)
 
     def _is_new_project(
@@ -386,10 +406,12 @@ class GoogleProjectName(TemplatePrompt):
         new_args = copy.deepcopy(args)
 
         project_id = args.get('project_id', None)
-        project_creation_mode = args.get('project_creation_mode', None)
+        mode = args.get('project_creation_mode', None)
+        validate = functools.partial(self._validate,
+                                     project_id=project_id,
+                                     project_creation_mode=mode)
         if self._is_valid_passed_arg(
-                console, step, args.get(self.PARAMETER, None),
-                self._validate(project_id, project_creation_mode)):
+                console, step, args.get(self.PARAMETER, None), validate):
             return new_args
 
         project_creation_mode = args.get('project_creation_mode', None)
@@ -527,11 +549,7 @@ class CredentialsPrompt(TemplatePrompt):
 
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
-        """Prompt the user for access to the Google credentials.
-
-        Returns:
-            The user's credentials.
-        """
+        """Prompt the user for access to the Google credentials."""
         new_args = copy.deepcopy(args)
         if self._is_valid_passed_arg(console, step,
                                      args.get(self.PARAMETER, None),
@@ -544,11 +562,10 @@ class CredentialsPrompt(TemplatePrompt):
         create_new_credentials = True
         active_account = self.auth_client.get_active_account()
 
-        msg = ('You have logged in with account [{}]. Do you want to '
-               'use it? [Y/n]: ').format(active_account)
-        use_active_credentials = _binary_prompt(msg, console, default='Y')
-
         if active_account:  # The user has already logged in before
+            msg = ('You have logged in with account [{}]. Do you want to '
+                   'use it? [Y/n]: ').format(active_account)
+            use_active_credentials = _binary_prompt(msg, console, default='Y')
             create_new_credentials = use_active_credentials.lower() == 'n'
 
         if create_new_credentials:
@@ -622,15 +639,13 @@ class BillingPrompt(TemplatePrompt):
                     'create a new billing account: ')
 
         options = [info['displayName'] for info in billing_accounts]
-        new_billing_account = ''
 
-        answer = _multiple_choice_prompt(
-            question, options, console, default=new_billing_account)
+        answer = _multiple_choice_prompt(question, options, console)
 
-        if answer == new_billing_account:
+        if answer is None:
             return self._get_new_billing_account(console, billing_accounts)
 
-        val = billing_accounts[int(answer) - 1]['name']
+        val = billing_accounts[answer]['name']
         return val
 
     def prompt(self, console: io.IO, step: str,
