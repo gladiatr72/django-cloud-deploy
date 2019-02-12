@@ -132,7 +132,8 @@ def _multiple_choice_validate(s: str, len_options: int):
     if 1 <= int(s) <= (len_options + 1):
         return
     else:
-        raise ValueError('Please enter a value between {} and {}'.format(1, len_options + 1))
+        raise ValueError('Please enter a value between {} and {}'.format(
+            1, len_options + 1))
 
 
 def _binary_prompt(question: str, console: io.IO,
@@ -346,8 +347,7 @@ class GoogleProjectName(TemplatePrompt):
         self.project_client = project_client
 
     def _validate(self, project_id: str,
-                  project_creation_mode: workflow.ProjectCreationMode,
-                  s: str):
+                  project_creation_mode: workflow.ProjectCreationMode, s: str):
         """Returns the method that validates the string.
 
         Args:
@@ -369,7 +369,6 @@ class GoogleProjectName(TemplatePrompt):
         if project_name != s:
             raise ValueError('Wrong project name given for project id.')
 
-
     def _handle_new_project(self, console: io.IO, step: str, args: [str, Any]):
         default_answer = 'Django Project'
         msg_base = ('{} Enter a Google Cloud Platform project name, or leave '
@@ -378,14 +377,8 @@ class GoogleProjectName(TemplatePrompt):
         msg = '\n'.join([msg_base, msg_default])
         project_id = args.get('project_id', None)
         mode = args.get('project_creation_mode', None)
-        validate = functools.partial(self._validate,
-                                     project_id=project_id,
-                                     project_creation_mode=mode)
-        return _ask_prompt(
-            msg,
-            console,
-            validate,
-            default=default_answer)
+        validate = functools.partial(self._validate, project_id, mode)
+        return _ask_prompt(msg, console, validate, default=default_answer)
 
     def _is_new_project(
             self, project_creation_mode: workflow.ProjectCreationMode) -> bool:
@@ -407,11 +400,9 @@ class GoogleProjectName(TemplatePrompt):
 
         project_id = args.get('project_id', None)
         mode = args.get('project_creation_mode', None)
-        validate = functools.partial(self._validate,
-                                     project_id=project_id,
-                                     project_creation_mode=mode)
-        if self._is_valid_passed_arg(
-                console, step, args.get(self.PARAMETER, None), validate):
+        validate = functools.partial(self._validate, project_id, mode)
+        if self._is_valid_passed_arg(console, step,
+                                     args.get(self.PARAMETER, None), validate):
             return new_args
 
         project_creation_mode = args.get('project_creation_mode', None)
