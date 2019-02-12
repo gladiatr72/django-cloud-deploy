@@ -543,8 +543,8 @@ class CredentialsPrompt(TemplatePrompt):
         """Prompt the user for access to the Google credentials."""
         new_args = copy.deepcopy(args)
         if self._is_valid_passed_arg(console, step,
-                                     args.get(self.PARAMETER, None),
-                                     lambda x: x):
+                                     args.get(self.PARAMETER,
+                                              None), lambda x: x):
             return new_args
 
         console.tell(
@@ -751,8 +751,8 @@ class DjangoFilesystemPath(TemplatePrompt):
         new_args = copy.deepcopy(args)
 
         if self._is_valid_passed_arg(console, step,
-                                     args.get(self.PARAMETER, None),
-                                     lambda x: x):
+                                     args.get(self.PARAMETER,
+                                              None), lambda x: x):
             return new_args
 
         while True:
