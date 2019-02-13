@@ -71,7 +71,7 @@ def _ask_prompt(question: str,
 def _multiple_choice_prompt(question: str,
                             options: List[str],
                             console: io.IO,
-                            default: Optional[int] = None) -> int:
+                            default: Optional[int] = None) -> Optional[int]:
     """Used to prompt user to choose from a list of values.
 
     Args:
@@ -89,7 +89,8 @@ def _multiple_choice_prompt(question: str,
                                          default=None)
 
     Returns:
-        The integer choice entered by the user of the options array.
+        The choice made by the user. Will be an index in the options list unless
+        default is None.
     """
     assert '{}' in question
 
@@ -118,7 +119,7 @@ def _multiple_choice_validate(s: str, len_options: int):
 
     Args:
         s: Value to validate.
-        len_options: Amount of possible options for the user.
+        len_options: Number of possible options for the user.
 
     Raises:
         ValueError: If the answer is not valid.
@@ -258,12 +259,12 @@ class Prompt(abc.ABC):
 
 
 class TemplatePrompt(Prompt):
-    """Used as a base template for all Parameter Prompts interacting with user.
+    """Base template for all parameter prompts interacting with the user.
 
     They must have a prompt method that calls one of the _x_prompt functions.
     They must own only one parameter.
-    They must have a validate function.
-    They will validate the value if passed in as a flag.
+    They should have a validate function.
+    They should call _is_valid_passed_arg at the beggining of prompt method.
     """
 
     # Parameter must be set for dictionary key
@@ -324,6 +325,16 @@ class StringTemplatePrompt(TemplatePrompt):
 
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
+        """Handles the business logic and calls the prompts.
+
+        Args:
+            console: Object to use for user I/O.
+            step: Message to present to user regarding what step they are on.
+            args: Dictionary holding prompts answered by user and set up
+                arguments.
+
+        Returns: A Copy of args + the new parameter collected.
+        """
         new_args = copy.deepcopy(args)
         if self._is_valid_passed_arg(console, step,
                                      args.get(self.PARAMETER, None),
@@ -396,6 +407,16 @@ class GoogleProjectName(TemplatePrompt):
 
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
+        """Handles the business logic and calls the prompts.
+
+        Args:
+            console: Object to use for user I/O.
+            step: Message to present to user regarding what step they are on.
+            args: Dictionary holding prompts answered by user and set up
+                arguments.
+
+        Returns: A Copy of args + the new parameter collected.
+        """
         new_args = copy.deepcopy(args)
 
         project_id = args.get('project_id', None)
@@ -447,6 +468,16 @@ class GoogleNewProjectId(TemplatePrompt):
 
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
+        """Handles the business logic and calls the prompts.
+
+        Args:
+            console: Object to use for user I/O.
+            step: Message to present to user regarding what step they are on.
+            args: Dictionary holding prompts answered by user and set up
+                arguments.
+
+        Returns: A Copy of args + the new parameter collected.
+        """
         new_args = copy.deepcopy(args)
         if self._is_valid_passed_arg(console, step,
                                      args.get(self.PARAMETER, None),
@@ -475,6 +506,16 @@ class GoogleProjectId(TemplatePrompt):
 
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
+        """Handles the business logic and calls the prompts.
+
+        Args:
+            console: Object to use for user I/O.
+            step: Message to present to user regarding what step they are on.
+            args: Dictionary holding prompts answered by user and set up
+                arguments.
+
+        Returns: A Copy of args + the new parameter collected.
+        """
         prompter = GoogleNewProjectId()
 
         if args.get('use_existing_project', False):
@@ -493,16 +534,19 @@ class GoogleExistingProjectId(TemplatePrompt):
 
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
-        """Prompt the user to a Google Cloud Platform project id.
+        """Handles the business logic and calls the prompts.
 
-        If the user supplies the project_id as a flag we want to validate that
-        it exists. We tell the user to supply a new one if it does not.
+        Args:
+            console: Object to use for user I/O.
+            step: Message to present to user regarding what step they are on.
+            args: Dictionary holding prompts answered by user and set up
+                arguments.
 
+        Returns: A Copy of args + the new parameter collected.
         """
 
         new_args = copy.deepcopy(args)
-        if self._is_valid_passed_arg(console, step,
-                                     args.get(self.PARAMETER, None),
+        if self._is_valid_passed_arg(console, step, args.get(self.PARAMETER),
                                      self._validate):
             return new_args
 
@@ -540,11 +584,19 @@ class CredentialsPrompt(TemplatePrompt):
 
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
-        """Prompt the user for access to the Google credentials."""
+        """Handles the business logic and calls the prompts.
+
+        Args:
+            console: Object to use for user I/O.
+            step: Message to present to user regarding what step they are on.
+            args: Dictionary holding prompts answered by user and set up
+                arguments.
+
+        Returns: A Copy of args + the new parameter collected.
+        """
         new_args = copy.deepcopy(args)
         if self._is_valid_passed_arg(console, step,
-                                     args.get(self.PARAMETER,
-                                              None), lambda x: x):
+                                     args.get(self.PARAMETER), lambda x: x):
             return new_args
 
         console.tell(
@@ -641,15 +693,22 @@ class BillingPrompt(TemplatePrompt):
 
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
-        """Prompt the user for a billing account to use for deployment.
+        """Handles the business logic and calls the prompts.
+
+        Args:
+            console: Object to use for user I/O.
+            step: Message to present to user regarding what step they are on.
+            args: Dictionary holding prompts answered by user and set up
+                arguments.
+
+        Returns: A Copy of args + the new parameter collected.
         """
         new_args = copy.deepcopy(args)
-        if self._is_valid_passed_arg(console, step,
-                                     args.get(self.PARAMETER, None),
+        if self._is_valid_passed_arg(console, step, args.get(self.PARAMETER),
                                      self._validate):
             return new_args
 
-        project_creation_mode = args.get('project_creation_mode', None)
+        project_creation_mode = args.get('project_creation_mode')
         if self._does_project_exist(project_creation_mode):
             billing_account = self._has_existing_billing_account(
                 console, step, args)
@@ -703,9 +762,18 @@ class PostgresPasswordPrompt(TemplatePrompt):
 
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
+        """Handles the business logic and calls the prompts.
+
+        Args:
+            console: Object to use for user I/O.
+            step: Message to present to user regarding what step they are on.
+            args: Dictionary holding prompts answered by user and set up
+                arguments.
+
+        Returns: A Copy of args + the new parameter collected.
+        """
         new_args = copy.deepcopy(args)
-        if self._is_valid_passed_arg(console, step,
-                                     args.get(self.PARAMETER, None),
+        if self._is_valid_passed_arg(console, step, args.get(self.PARAMETER),
                                      self._validate):
             return new_args
 
@@ -747,12 +815,20 @@ class DjangoFilesystemPath(TemplatePrompt):
 
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
-        """Prompt the user to enter a file system path for their project."""
+        """Handles the business logic and calls the prompts.
+
+        Args:
+            console: Object to use for user I/O.
+            step: Message to present to user regarding what step they are on.
+            args: Dictionary holding prompts answered by user and set up
+                arguments.
+
+        Returns: A Copy of args + the new parameter collected.
+        """
         new_args = copy.deepcopy(args)
 
         if self._is_valid_passed_arg(console, step,
-                                     args.get(self.PARAMETER,
-                                              None), lambda x: x):
+                                     args.get(self.PARAMETER), lambda x: x):
             return new_args
 
         while True:
@@ -790,10 +866,18 @@ class DjangoFilesystemPathUpdate(TemplatePrompt):
 
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
-        """Prompt the user to enter a file system path for their project."""
+        """Handles the business logic and calls the prompts.
+
+        Args:
+            console: Object to use for user I/O.
+            step: Message to present to user regarding what step they are on.
+            args: Dictionary holding prompts answered by user and set up
+                arguments.
+
+        Returns: A Copy of args + the new parameter collected.
+        """
         new_args = copy.deepcopy(args)
-        if self._is_valid_passed_arg(console, step,
-                                     args.get(self.PARAMETER, None),
+        if self._is_valid_passed_arg(console, step, args.get(self.PARAMETER),
                                      self._validate):
             return new_args
 
@@ -895,7 +979,7 @@ class DjangoSuperuserPasswordPrompt(TemplatePrompt):
 
     PARAMETER = 'django_superuser_password'
 
-    def _get_prompt(self, arguments: Dict[str, Any]) -> str:
+    def _get_prompt_message(self, arguments: Dict[str, Any]) -> str:
         if 'django_superuser_login' in arguments:
             return 'Enter a password for the Django superuser "{}"'.format(
                 arguments['django_superuser_login'])
@@ -904,13 +988,22 @@ class DjangoSuperuserPasswordPrompt(TemplatePrompt):
 
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
+        """Handles the business logic and calls the prompts.
+
+        Args:
+            console: Object to use for user I/O.
+            step: Message to present to user regarding what step they are on.
+            args: Dictionary holding prompts answered by user and set up
+                arguments.
+
+        Returns: A Copy of args + the new parameter collected.
+        """
         new_args = copy.deepcopy(args)
-        if self._is_valid_passed_arg(console, step,
-                                     args.get(self.PARAMETER, None),
+        if self._is_valid_passed_arg(console, step, args.get(self.PARAMETER),
                                      self._validate):
             return new_args
 
-        msg = self._get_prompt(args)
+        msg = self._get_prompt_message(args)
         question = '{} {}'.format(step, msg)
         answer = _password_prompt(question, console)
         new_args[self.PARAMETER] = answer
@@ -989,6 +1082,16 @@ class RootPrompt(object):
 
     def prompt(self, command: Command, console: io.IO,
                args: Dict[str, Any]) -> Dict[str, Any]:
+        """Calls all of the prompts to collect all of the paramters.
+
+        Args:
+            command: Flag that picks what prompts are needed.
+            console: Object to use for user I/O.
+            args: Dictionary holding prompts answered by user and set up
+                arguments.
+
+        Returns: A Copy of args + the new parameter collected.
+        """
         new_args = copy.deepcopy(args)
         if new_args.get('use_existing_project', False):
             new_args['project_creation_mode'] = (
