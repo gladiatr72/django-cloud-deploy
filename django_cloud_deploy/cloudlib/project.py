@@ -123,10 +123,3 @@ class ProjectClient(object):
         backoff.constant, max_tries=20, interval=3, logger=None)
     def _confirm_project_creation(self, project_id: str) -> bool:
         return self.project_exists(project_id)
-
-    def _set_gcloud_project(self, project_id):
-        # TODO: Remove this. This module (and the rest of the package)
-        # should not be dependant on global state.
-        command = ['gcloud', '-q', 'config', 'set', 'project', project_id]
-        subprocess.check_call(
-            command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
