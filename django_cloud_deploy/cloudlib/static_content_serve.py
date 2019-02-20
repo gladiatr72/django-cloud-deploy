@@ -170,9 +170,7 @@ class StaticContentServeClient(object):
                     'Unexpected error setting iam policy of bucket "{}"'.format(
                         bucket_name)) from e
 
-    def _upload_file_to_object(self,
-                               local_file_path: str,
-                               bucket_name: str,
+    def _upload_file_to_object(self, local_file_path: str, bucket_name: str,
                                object_name: str):
         """Upload the contents of a local file to an object in a GCS bucket."""
         media_body = http.MediaFileUpload(local_file_path)
@@ -184,8 +182,7 @@ class StaticContentServeClient(object):
             if 'name' not in response:
                 raise StaticContentServeError(
                     'Unexpected responses when uploading file "{}" to '
-                    'bucket "{}"'.format(local_file_path,
-                                         bucket_name))
+                    'bucket "{}"'.format(local_file_path, bucket_name))
         except errors.HttpError as e:
             if e.resp.status == 403:
                 raise StaticContentServeError(
@@ -197,8 +194,7 @@ class StaticContentServeClient(object):
             else:
                 raise StaticContentServeError(
                     'Unexpected error when uploading file "{}" to '
-                    'bucket "{}"'.format(local_file_path,
-                                         bucket_name)) from e
+                    'bucket "{}"'.format(local_file_path, bucket_name)) from e
 
         # http.MediaFileUpload opens a file but never closes it. So we
         # need to manually close the file to avoid "ResourceWarning:
@@ -239,7 +235,8 @@ class StaticContentServeClient(object):
 
                 # Local absolute path of the file
                 absolute_file_path = os.path.join(root, relative_file_path)
-                self._upload_file_to_object(absolute_file_path, bucket_name, gcs_file_path)
+                self._upload_file_to_object(absolute_file_path, bucket_name,
+                                            gcs_file_path)
 
     def collect_static_content(self):
         """Collect static content of the provided Django project.
