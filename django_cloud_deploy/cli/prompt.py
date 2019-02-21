@@ -110,7 +110,7 @@ def _multiple_choice_prompt(question: str,
             return default
 
         try:
-            _multiple_choice_validate(answer, default, len(options))
+            _multiple_choice_validate(answer, len(options))
             break
         except ValueError as e:
             console.error(e)
