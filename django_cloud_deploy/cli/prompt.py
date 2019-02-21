@@ -698,7 +698,7 @@ class BillingPrompt(TemplatePrompt):
         answer = _multiple_choice_prompt(question, options, console,
                                          new_billing_account)
 
-        if answer == -1:
+        if answer == new_billing_account:
             return self._get_new_billing_account(console, billing_accounts)
 
         val = billing_accounts[answer]['name']
