@@ -31,11 +31,10 @@ class OrganizationsFake(object):
 
     def search(self, body):
         if self._is_google:
-            return http_fake.HttpRequestFake({
-                'organizations': [{
+            return http_fake.HttpRequestFake(
+                {'organizations': [{
                     'displayName': 'google.com',
-                }]
-            })
+                }]})
         else:
             return http_fake.HttpRequestFake({})
 
@@ -54,10 +53,8 @@ class ProjectsFake(object):
                         http_fake.HttpResponseFake(409),
                         b'Requested entity already exists'))
         self.projects.append(body)
-        return http_fake.HttpRequestFake({
-            'name':
-            'operations/cp.7730969938063130608'
-        })
+        return http_fake.HttpRequestFake(
+            {'name': 'operations/cp.7730969938063130608'})
 
     def get(self, projectId):
         for p in self.projects:
@@ -101,55 +98,19 @@ class ProjectClientTestCase(absltest.TestCase):
         service_fake = ServiceFake(is_google=True)
         project_client = project.ProjectClient(service_fake)
         project_client.create_project('fn123', 'Friendly Name')
-        self.assertEqual(service_fake.projects_fake.projects,
-                         [{
-                             'name': 'Friendly Name',
-                             'projectId': 'fn123',
-                             'parent': {
-                                 'id': project._DEFAULT_GOOGLE_FOLDER_ID,
-                                 'type': 'folder'
-                             }
-                         }])
+        self.assertEqual(service_fake.projects_fake.projects, [{
+            'name': 'Friendly Name',
+            'projectId': 'fn123',
+            'parent': {
+                'id': project._DEFAULT_GOOGLE_FOLDER_ID,
+                'type': 'folder'
+            }
+        }])
 
     def test_create_project_exists(self):
         self._project_client.create_project('fn123', 'Friendly Name')
         with self.assertRaises(project.ProjectExistsError):
             self._project_client.create_project('fn123', 'Duplicate!')
 
-    @mock.patch('subprocess.check_call')
-    def test_create_and_set_project(self, check_call):
-        self._project_client.create_and_set_project('fn123', 'Friendly Name')
-        self.assertEqual(self._service_fake.projects_fake.projects,
-                         [{
-                             'name': 'Friendly Name',
-                             'projectId': 'fn123',
-                         }])
-
-        check_call.assert_called_once_with(
-            ['gcloud', '-q', 'config', 'set', 'project', 'fn123'],
-            stderr=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL)
-
-    @mock.patch('subprocess.check_call')
-    def test_project_exists_does(self, check_call):
-        self._project_client.create_and_set_project('p123', 'Friendly Name')
-        check_call.assert_called_once_with(
-            ['gcloud', '-q', 'config', 'set', 'project', 'p123'],
-            stderr=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL)
-
     def test_project_exists_doesnot(self):
         self.assertFalse(self._project_client.project_exists('p123'))
-
-    @mock.patch('subprocess.check_call')
-    def test_set_existing_project(self, check_call):
-        self._project_client.create_project('fn123', 'Friendly Name')
-        self._project_client.set_existing_project('fn123')
-        check_call.assert_called_once_with(
-            ['gcloud', '-q', 'config', 'set', 'project', 'fn123'],
-            stderr=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL)
-
-    def test_set_existing_project_non_existant(self):
-        with self.assertRaises(project.ProjectError):
-            self._project_client.set_existing_project('fn123')
