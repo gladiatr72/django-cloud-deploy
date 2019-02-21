@@ -49,7 +49,8 @@ def _ask_prompt(question: str,
         console: Object to use for user I/O.
         validate: Function used to check if value provided is valid. It should
             raise a ValueError if the the value fails to validate.
-        default: Default value if user provides no value. (Presses enter)
+        default: Default value if user provides no value. (Presses enter) If
+            default is None, the user must provide an answer that is valid.
 
     Returns:
         The value entered by the user.
@@ -79,7 +80,9 @@ def _multiple_choice_prompt(question: str,
             a {} to insert a list of enumerated options.
         options: Possible values user should choose from.
         console: Object to use for user I/O.
-        default: Default value if user provides no value. (Presses enter)
+        default: Default value if user provides no value. (Presses enter) If
+            default is None the user is forced to choose a value in the
+            option list.
 
     Typical usage:
         # User can press enter if user doesn't want anything.
@@ -93,23 +96,24 @@ def _multiple_choice_prompt(question: str,
         default is None.
     """
     assert '{}' in question
+    assert len(options) > 0
 
     options_formatted = [
         '{}. {}'.format(str(i), opt) for i, opt in enumerate(options, 1)
     ]
     options = '\n'.join(options_formatted)
-    answer = console.ask(question.format(options))
 
     while True:
+        answer = console.ask(question.format(options))
+
+        if not answer and default:
+            return default
+
         try:
-            _multiple_choice_validate(answer, len(options))
+            _multiple_choice_validate(answer, default, len(options))
             break
         except ValueError as e:
             console.error(e)
-            answer = console.ask(question.format(options))
-
-    if not answer:
-        return default
 
     return int(answer) - 1
 
@@ -125,7 +129,8 @@ def _multiple_choice_validate(s: str, len_options: int):
         ValueError: If the answer is not valid.
     """
     if not s:
-        return
+        raise ValueError('Please enter a value between {} and {}'.format(
+            1, len_options + 1))
 
     if not str.isnumeric(s):
         raise ValueError('Please enter a numeric value')
@@ -137,23 +142,25 @@ def _multiple_choice_validate(s: str, len_options: int):
             1, len_options + 1))
 
 
-def _binary_prompt(question: str, console: io.IO,
-                   default: Optional[str] = None) -> str:
+def _binary_prompt(question: str,
+                   console: io.IO,
+                   default: Optional[bool] = None) -> bool:
     """Used to prompt user to choose from a yes or no question.
 
     Args:
         question: Question shown to the user on the console.
         console: Object to use for user I/O.
-        default: Default value if user provides no value. (Presses enter)
+        default: Default value if user provides no value. (Presses enter) If
+            default is None the user is forced to choose a value (y/n).
 
     Returns:
-        The choice entered by the user. One of 'y' or 'n'.
+        The bool representation of the choice of the user. Yes is True.
     """
 
     while True:
         answer = console.ask(question).lower()
 
-        if default and not answer:
+        if default is not None and not answer:
             return default
 
         try:
@@ -162,7 +169,7 @@ def _binary_prompt(question: str, console: io.IO,
         except ValueError as e:
             console.error(e)
 
-    return answer
+    return answer == 'y'
 
 
 def _binary_validate(s: str):
@@ -211,7 +218,7 @@ def _password_validate(s):
     Raises:
         ValueError: if the input string is not valid.
     """
-    if len(s) < 5:
+    if len(s) < 6:
         raise ValueError('Passwords must be at least 6 characters long')
     allowed_characters = frozenset(string.ascii_letters + string.digits +
                                    string.punctuation)
@@ -272,13 +279,13 @@ class TemplatePrompt(Prompt):
 
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
-        """Handles the business logic and calls the prompts.
+        """Extracts user arguments through the command-line.
 
         Args:
             console: Object to use for user I/O.
             step: Message to present to user regarding what step they are on.
             args: Dictionary holding prompts answered by user and set up
-                arguments.
+                command-line arguments.
 
         Returns: A Copy of args + the new parameter collected.
         """
@@ -304,7 +311,7 @@ class TemplatePrompt(Prompt):
             validate(value)
         except ValueError as e:
             console.error(e)
-            return False
+            quit()
 
         msg = '{} {}: {}'.format(step, self.PARAMETER, value)
         console.tell(msg)
@@ -319,19 +326,23 @@ class StringTemplatePrompt(TemplatePrompt):
     this should set the variables below.
     """
 
+    # The key used for the args dictionary, eg. project_id
     PARAMETER = ''
+    # Value user can use if they press enter on the command line, eg django-1234
     DEFAULT_VALUE = ''
+    # Message to prompt the user on the command-line, eg. Please choose a
+    # project id.
     MESSAGE = ''
 
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
-        """Handles the business logic and calls the prompts.
+        """Extracts user arguments through the command-line.
 
         Args:
             console: Object to use for user I/O.
             step: Message to present to user regarding what step they are on.
             args: Dictionary holding prompts answered by user and set up
-                arguments.
+                command-line arguments.
 
         Returns: A Copy of args + the new parameter collected.
         """
@@ -407,13 +418,13 @@ class GoogleProjectName(TemplatePrompt):
 
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
-        """Handles the business logic and calls the prompts.
+        """Extracts user arguments through the command-line.
 
         Args:
             console: Object to use for user I/O.
             step: Message to present to user regarding what step they are on.
             args: Dictionary holding prompts answered by user and set up
-                arguments.
+                command-line arguments.
 
         Returns: A Copy of args + the new parameter collected.
         """
@@ -468,13 +479,13 @@ class GoogleNewProjectId(TemplatePrompt):
 
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
-        """Handles the business logic and calls the prompts.
+        """Extracts user arguments through the command-line.
 
         Args:
             console: Object to use for user I/O.
             step: Message to present to user regarding what step they are on.
             args: Dictionary holding prompts answered by user and set up
-                arguments.
+                command-line arguments.
 
         Returns: A Copy of args + the new parameter collected.
         """
@@ -506,13 +517,13 @@ class GoogleProjectId(TemplatePrompt):
 
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
-        """Handles the business logic and calls the prompts.
+        """Extracts user arguments through the command-line.
 
         Args:
             console: Object to use for user I/O.
             step: Message to present to user regarding what step they are on.
             args: Dictionary holding prompts answered by user and set up
-                arguments.
+                command-line arguments.
 
         Returns: A Copy of args + the new parameter collected.
         """
@@ -534,13 +545,13 @@ class GoogleExistingProjectId(TemplatePrompt):
 
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
-        """Handles the business logic and calls the prompts.
+        """Extracts user arguments through the command-line.
 
         Args:
             console: Object to use for user I/O.
             step: Message to present to user regarding what step they are on.
             args: Dictionary holding prompts answered by user and set up
-                arguments.
+                command-line arguments.
 
         Returns: A Copy of args + the new parameter collected.
         """
@@ -584,13 +595,13 @@ class CredentialsPrompt(TemplatePrompt):
 
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
-        """Handles the business logic and calls the prompts.
+        """Extracts user arguments through the command-line.
 
         Args:
             console: Object to use for user I/O.
             step: Message to present to user regarding what step they are on.
             args: Dictionary holding prompts answered by user and set up
-                arguments.
+                command-line arguments.
 
         Returns: A Copy of args + the new parameter collected.
         """
@@ -609,7 +620,7 @@ class CredentialsPrompt(TemplatePrompt):
             msg = ('You have logged in with account [{}]. Do you want to '
                    'use it? [Y/n]: ').format(active_account)
             use_active_credentials = _binary_prompt(msg, console, default='Y')
-            create_new_credentials = use_active_credentials.lower() == 'n'
+            create_new_credentials = not use_active_credentials
 
         if create_new_credentials:
             creds = self.auth_client.create_default_credentials()
@@ -683,9 +694,11 @@ class BillingPrompt(TemplatePrompt):
 
         options = [info['displayName'] for info in billing_accounts]
 
-        answer = _multiple_choice_prompt(question, options, console)
+        new_billing_account = -1
+        answer = _multiple_choice_prompt(question, options, console,
+                                         new_billing_account)
 
-        if answer is None:
+        if answer == -1:
             return self._get_new_billing_account(console, billing_accounts)
 
         val = billing_accounts[answer]['name']
@@ -693,13 +706,13 @@ class BillingPrompt(TemplatePrompt):
 
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
-        """Handles the business logic and calls the prompts.
+        """Extracts user arguments through the command-line.
 
         Args:
             console: Object to use for user I/O.
             step: Message to present to user regarding what step they are on.
             args: Dictionary holding prompts answered by user and set up
-                arguments.
+                command-line arguments.
 
         Returns: A Copy of args + the new parameter collected.
         """
@@ -762,13 +775,13 @@ class PostgresPasswordPrompt(TemplatePrompt):
 
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
-        """Handles the business logic and calls the prompts.
+        """Extracts user arguments through the command-line.
 
         Args:
             console: Object to use for user I/O.
             step: Message to present to user regarding what step they are on.
             args: Dictionary holding prompts answered by user and set up
-                arguments.
+                command-line arguments.
 
         Returns: A Copy of args + the new parameter collected.
         """
@@ -815,13 +828,13 @@ class DjangoFilesystemPath(TemplatePrompt):
 
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
-        """Handles the business logic and calls the prompts.
+        """Extracts user arguments through the command-line.
 
         Args:
             console: Object to use for user I/O.
             step: Message to present to user regarding what step they are on.
             args: Dictionary holding prompts answered by user and set up
-                arguments.
+                command-line arguments.
 
         Returns: A Copy of args + the new parameter collected.
         """
@@ -866,13 +879,13 @@ class DjangoFilesystemPathUpdate(TemplatePrompt):
 
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
-        """Handles the business logic and calls the prompts.
+        """Extracts user arguments through the command-line.
 
         Args:
             console: Object to use for user I/O.
             step: Message to present to user regarding what step they are on.
             args: Dictionary holding prompts answered by user and set up
-                arguments.
+                command-line arguments.
 
         Returns: A Copy of args + the new parameter collected.
         """
@@ -988,13 +1001,13 @@ class DjangoSuperuserPasswordPrompt(TemplatePrompt):
 
     def prompt(self, console: io.IO, step: str,
                args: Dict[str, Any]) -> Dict[str, Any]:
-        """Handles the business logic and calls the prompts.
+        """Extracts user arguments through the command-line.
 
         Args:
             console: Object to use for user I/O.
             step: Message to present to user regarding what step they are on.
             args: Dictionary holding prompts answered by user and set up
-                arguments.
+                command-line arguments.
 
         Returns: A Copy of args + the new parameter collected.
         """
@@ -1088,7 +1101,7 @@ class RootPrompt(object):
             command: Flag that picks what prompts are needed.
             console: Object to use for user I/O.
             args: Dictionary holding prompts answered by user and set up
-                arguments.
+                command-line arguments.
 
         Returns: A Copy of args + the new parameter collected.
         """
