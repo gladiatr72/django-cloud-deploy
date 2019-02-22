@@ -45,7 +45,7 @@ class DeployWorkflow(object):
         Returns:
             The url of the deployed Django app.
         """
-        workflow = _deploygae.DeploygaeWorkflow()
+        workflow = _deploygae.DeploygaeWorkflow(self.credentials)
         return workflow.deploy_gae_app(project_id, django_directory_path,
                                        region, is_new)
 

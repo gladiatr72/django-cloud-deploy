@@ -14,6 +14,7 @@
 """Manages resources about static content serving of Django projects."""
 
 import os
+import pathlib
 
 from django.conf import settings
 from django.core import management
@@ -170,10 +171,44 @@ class StaticContentServeClient(object):
                     'Unexpected error setting iam policy of bucket "{}"'.format(
                         bucket_name)) from e
 
+    def _upload_file_to_object(self, local_file_path: str, bucket_name: str,
+                               object_name: str):
+        """Upload the contents of a local file to an object in a GCS bucket."""
+        media_body = http.MediaFileUpload(local_file_path)
+        body = {'name': object_name}
+        request = self._storage_service.objects().insert(
+            bucket=bucket_name, body=body, media_body=media_body)
+        try:
+            response = request.execute()
+            if 'name' not in response:
+                raise StaticContentServeError(
+                    'Unexpected responses when uploading file "{}" to '
+                    'bucket "{}"'.format(local_file_path, bucket_name))
+        except errors.HttpError as e:
+            if e.resp.status == 403:
+                raise StaticContentServeError(
+                    'You do not have permission to upload files to '
+                    'bucket "{}"'.format(bucket_name))
+            elif e.resp.status == 404:
+                raise StaticContentServeError(
+                    'Bucket "{}" not found.'.format(bucket_name))
+            else:
+                raise StaticContentServeError(
+                    'Unexpected error when uploading file "{}" to '
+                    'bucket "{}"'.format(local_file_path, bucket_name)) from e
+
+        # http.MediaFileUpload opens a file but never closes it. So we
+        # need to manually close the file to avoid "ResourceWarning:
+        # unclosed file".
+        # TODO: Remove this line when
+        # https://github.com/googleapis/google-api-python-client/issues/575
+        # is resolved.
+        media_body.stream().close()
+
     def upload_content(self,
                        bucket_name: str,
                        static_content_dir: str,
-                       folder_root: str = None):
+                       gcs_folder_root: str = None):
         """Upload content in the given directory to a GCS bucket.
 
         Args:
@@ -181,7 +216,7 @@ class StaticContentServeClient(object):
                 to.
             static_content_dir: Absolute path of the directory containing
                 static files of the Django app.
-            folder_root: Name of root folder for files in GCS bucket.
+            gcs_folder_root: Name of root folder for files in GCS bucket.
 
         Raises:
             StaticContentServeError: When failed to upload files.
@@ -191,48 +226,24 @@ class StaticContentServeClient(object):
 
         # The api only supports uploading a single file. So we need to iterate
         # all files in the given directory.
-        for root, _, files in os.walk(static_content_dir):
-            relative_dir = root[prefix_length + 1:]
-            for relative_file_path in files:
-                folder_root = folder_root or self.GCS_ROOT
-                # Path of the file in GCS bucket
-                gcs_file_path = os.path.join(folder_root, relative_dir,
-                                             relative_file_path)
+        for directory_absolute_path, _, files in os.walk(static_content_dir):
+            directory_relative_path = os.path.relpath(directory_absolute_path,
+                                                      static_content_dir)
+            for filename in files:
+                gcs_folder_root = gcs_folder_root or self.GCS_ROOT
+                # Path of the file in the GCS bucket. Always use POSIX paths
+                # to avoid backslashes in names when running on Windows.
+                gcs_relative_path = pathlib.PurePosixPath(
+                    directory_relative_path.replace('\\', '/'))
+                gcs_object_path = (
+                    pathlib.PurePosixPath(gcs_folder_root) / gcs_relative_path /
+                    pathlib.PurePosixPath(filename))
 
                 # Local absolute path of the file
-                absolute_file_path = os.path.join(root, relative_file_path)
-                media_body = http.MediaFileUpload(absolute_file_path)
-                body = {'name': gcs_file_path}
-                request = self._storage_service.objects().insert(
-                    bucket=bucket_name, body=body, media_body=media_body)
-                try:
-                    response = request.execute()
-                    if 'name' not in response:
-                        raise StaticContentServeError(
-                            'Unexpected responses when uploading file "{}" to '
-                            'bucket "{}"'.format(absolute_file_path,
-                                                 bucket_name))
-                except errors.HttpError as e:
-                    if e.resp.status == 403:
-                        raise StaticContentServeError(
-                            'You do not have permission to upload files to '
-                            'bucket "{}"'.format(bucket_name))
-                    elif e.resp.status == 404:
-                        raise StaticContentServeError(
-                            'Bucket "{}" not found.'.format(bucket_name))
-                    else:
-                        raise StaticContentServeError(
-                            'Unexpected error when uploading file "{}" to '
-                            'bucket "{}"'.format(absolute_file_path,
-                                                 bucket_name)) from e
-
-                # http.MediaFileUpload opens a file but never closes it. So we
-                # need to manually close the file to avoid "ResourceWarning:
-                # unclosed file".
-                # TODO: Remove this line when
-                # https://github.com/googleapis/google-api-python-client/issues/575
-                # is resolved.
-                media_body.stream().close()
+                local_file_path = os.path.join(directory_absolute_path,
+                                               filename)
+                self._upload_file_to_object(local_file_path, bucket_name,
+                                            str(gcs_object_path))
 
     def collect_static_content(self):
         """Collect static content of the provided Django project.
