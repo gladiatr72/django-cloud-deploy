@@ -31,7 +31,7 @@ from googleapiclient import errors
 import requests
 
 
-class EnableServiceWorkflowIntegrationTest(test_base.ResourceCleanUpTest):
+class EnableServiceWorkflowIntegrationTest(test_base.ResourceCleanUp):
     """Integration test for django_cloud_deploy.workflow._enable_service."""
 
     # Google drive api is not already enabled on the GCP project for integration
@@ -62,7 +62,7 @@ class EnableServiceWorkflowIntegrationTest(test_base.ResourceCleanUpTest):
 
 
 class ServiceAccountKeyGenerationWorkflowIntegrationTest(
-        test_base.ResourceCleanUpTest):
+        test_base.ResourceCleanUp):
     """Integration test for django_cloud_deploy.workflow._service_account."""
 
     ROLES = ('roles/cloudsql.client', 'roles/cloudsql.editor',
@@ -130,7 +130,7 @@ class ServiceAccountKeyGenerationWorkflowIntegrationTest(
 
 
 class DeploygkeWorkflowIntegrationTest(test_base.DjangoFileGeneratorTest,
-                                       test_base.ResourceCleanUpTest):
+                                       test_base.ResourceCleanUp):
     """Integration test for django_cloud_deploy.workflow._deploygke."""
 
     def setUp(self):
@@ -219,7 +219,7 @@ class ProjectWorkflowIntegrationTest(test_base.BaseTest):
 
 
 class StaticContentServeWorkflowIntegrationTest(
-        test_base.DjangoFileGeneratorTest, test_base.ResourceCleanUpTest):
+        test_base.DjangoFileGeneratorTest, test_base.ResourceCleanUp):
     """Integration test for django_gke.workflow._static_content_serve."""
 
     def setUp(self):
@@ -241,7 +241,7 @@ class StaticContentServeWorkflowIntegrationTest(
 
 
 class DatabaseWorkflowIntegrationTest(test_base.DjangoFileGeneratorTest,
-                                      test_base.ResourceCleanUpTest):
+                                      test_base.ResourceCleanUp):
     """Integration test for django_cloud_deploy.workflow._database."""
 
     def setUp(self):
