@@ -225,7 +225,7 @@ class WorkflowManager(object):
         if backend == 'gke':
             with self._console_io.progressbar(
                     1200, '[8/{}]: Deployment'.format(self._TOTAL_NEW_STEPS)):
-                app_url = self.deploy_workflow.deploy_new_app_sync(
+                app_url = self.deploy_workflow.deploy_gke_app(
                     project_id, cluster_name, django_directory_path,
                     django_project_name, image_name, secrets)
         else:
@@ -315,7 +315,7 @@ class WorkflowManager(object):
                 180,
                 '[3/{}]: Update Deployment'.format(self._TOTAL_UPDATE_STEPS)):
             if backend == 'gke':
-                app_url = self.deploy_workflow.update_app_sync(
+                app_url = self.deploy_workflow.update_gke_app(
                     project_id, cluster_name, django_directory_path,
                     django_project_name, image_name)
             else:
