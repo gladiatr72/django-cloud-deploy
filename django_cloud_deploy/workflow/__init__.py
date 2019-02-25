@@ -276,7 +276,7 @@ class WorkflowManager(object):
         django_project_name = config_obj.get('django_project_name')
         backend = config_obj.get('backend')
         cloud_sql_proxy_port = portpicker.pick_unused_port()
-        if not project_id or not backend or not cloud_sql_proxy_path:
+        if not project_id or not backend or not django_project_name:
             raise InvalidConfigError(
                 'Configuration file in [{}] does not contain enough '
                 'information to update a Django project.'.format(
