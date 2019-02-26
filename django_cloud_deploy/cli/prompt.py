@@ -92,8 +92,8 @@ def _multiple_choice_prompt(question: str,
                                          default=None)
 
     Returns:
-        The choice made by the user. Will be an index in the options list unless
-        default is None.
+        The choice made by the user. If default is none, it is guaranteed to be
+        an index in the options
     """
     assert '{}' in question
     assert len(options) > 0
@@ -254,10 +254,10 @@ class Prompt(abc.ABC):
                              validate: Callable[[str], None]) -> bool:
         """Used to validate if the user passed in a parameter as a flag.
 
-        All s that retrieve a parameter should call this function first.
-        It requires all s to have implemented validate. The code also
-        will process a passed in paramater as a step. This is used to have a
-        hard coded amount of steps that is easy to manage.
+        All prompts that retrieve a parameter should call this function first.
+        This allows for passed in paramters via flags be considered as a step.
+        This is used to have a hard coded amount of steps that is easier to
+        manage.
 
         Returns:
             A boolean indicating if the passed in argument is valid.
