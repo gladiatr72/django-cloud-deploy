@@ -93,7 +93,7 @@ def _multiple_choice_prompt(question: str,
 
     Returns:
         The choice made by the user. If default is none, it is guaranteed to be
-        an index in the options
+        an index in the options, else it can possible be the default value.
     """
     assert '{}' in question
     assert len(options) > 0
