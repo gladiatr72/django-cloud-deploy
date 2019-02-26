@@ -536,8 +536,9 @@ class DjangoSourceFileGeneratorTest(FileGeneratorTest):
         management.call_command('startproject', project_name, self._project_dir)
         existing_app_path = os.path.join(self._project_dir, 'existing_app')
         os.mkdir(existing_app_path)
-        management.call_command('startapp', 'existing_app', existing_app_path)
+        management.call_command('startapp', app_name, existing_app_path)
         self._generator.generate_from_existing(
-            project_id, project_name, app_name, self._project_dir,
-            'fake_db_user', 'fake_db_password')
+            project_id=project_id, project_name=project_name,
+            project_dir=self._project_dir, database_user='fake_db_user',
+            database_password='fake_db_password')
         self._test_project_structure(project_name, app_name, self._project_dir)
