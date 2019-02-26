@@ -174,10 +174,6 @@ class _DjangoProjectFileGenerator(_Jinja2FileGenerator):
         self._generate_files(self.PROJECT_TEMPLATE_FOLDER, project_dir,
                              filename_template_replacement, options)
 
-    def generate_from_existing(self, project_name: str, project_dir: str,
-                               app_name: str):
-        self.generate_new(project_name, project_dir, app_name)
-
 
 class _DjangoAppFileGenerator(_Jinja2FileGenerator):
     """Generate Django and app files."""
@@ -200,10 +196,6 @@ class _DjangoAppFileGenerator(_Jinja2FileGenerator):
         self._generate_files(self.APP_TEMPLATE_FOLDER,
                              app_destination, options=options)
 
-    def generate_from_existing(self, app_name: str, project_dir: str):
-        self.generate_new(app_name, project_dir)
-
-
 
 class _DjangoAdminOverwriteGenerator(_Jinja2FileGenerator):
     """Generate Django admin app overwrite files."""
@@ -218,10 +210,6 @@ class _DjangoAdminOverwriteGenerator(_Jinja2FileGenerator):
         self._generate_admin_files(project_id, project_name, project_dir)
         self._generate_templates_files(project_dir)
         self._generate_static_files(project_dir)
-
-    def generate_from_existing(self, project_name: str, project_dir: str,
-                               app_name: str):
-        self.generate_new(project_name, project_dir, app_name)
 
     def _generate_admin_files(self,
                               project_id: str,
@@ -386,6 +374,7 @@ class _DockerfileGenerator(_Jinja2FileGenerator):
             self._render_file(template_path, output_path, options)
 
     def generate_from_existing(self, project_name: str, project_dir: str):
+        # TODO: Handle generation based on existing Dockerfile.
         self.generate_new(project_name, project_dir)
 
 
@@ -405,6 +394,7 @@ class _AppEngineFileGenerator(_Jinja2FileGenerator):
         self._generate_yaml(project_dir, project_name)
 
     def generate_from_existing(self, project_name: str, project_dir: str):
+        # TODO: Handle generation based on existing app.yaml
         self.generate_new(project_name, project_dir)
 
     def _generate_ignore(self, project_dir: str):
@@ -448,6 +438,7 @@ class _DependencyFileGenerator(_Jinja2FileGenerator):
         self._render_file(template_path, output_path)
 
     def generate_from_existing(self, project_dir: str):
+        # TODO: Handle generation based on existing requirements.txt
         self.generate_new(project_dir)
 
 
@@ -514,6 +505,7 @@ class _YAMLFileGenerator(_Jinja2FileGenerator):
                                image_tag: Optional[str] = None,
                                cloudsql_secrets: Optional[List[str]] = None,
                                django_secrets: Optional[List[str]] = None):
+        # Handle generation based on existing yaml files
         self.generate_new(project_dir, project_name, project_id,
                           instance_name, region, image_tag,
                           cloudsql_secrets, django_secrets)
@@ -659,7 +651,6 @@ class DjangoSourceFileGenerator(_FileGenerator):
             project_id: Your GCP project id. This can be got from your GCP
                 console.
             project_name: Name of your Django project.
-            app_name: The app that you want to create in your project.
             project_dir: The destination directory path to put your Django
                 project.
             database_user: The name of the database user. By default it is
@@ -684,7 +675,9 @@ class DjangoSourceFileGenerator(_FileGenerator):
         cloud_sql_connection_string = (
             '{}:{}:{}'.format(project_id, region, instance_name))
 
-        self.django_admin_overwrite_generator.generate_from_existing(
+        # We assume django admin overwrite files never exist in an existing
+        # Django project
+        self.django_admin_overwrite_generator.generate_new(
             project_id, project_name, project_dir)
         self.settings_file_generator.generate_from_existing(
             project_id, project_name, project_dir, cloud_sql_connection_string,

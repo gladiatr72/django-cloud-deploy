@@ -229,10 +229,9 @@ class SettingsFileGeneratorTest(FileGeneratorTest):
         cloud_sql_connection_string = ('{}:{}:{}'.format(
             project_id, 'us-west', 'instance'))
 
-        self._generator.generate_new(project_id, project_name,
-                                     self._project_dir,
-                                     cloud_sql_connection_string,
-                                     'customize-db', 'customize-bucket')
+        self._generator.generate_new(
+            project_id, project_name, self._project_dir,
+            cloud_sql_connection_string, 'customize-db', 'customize-bucket')
 
         sys.path.append(self._project_dir)
         module = importlib.import_module(project_name + '.cloud_settings')
@@ -429,10 +428,9 @@ class YAMLFileGeneratorTest(FileGeneratorTest):
         image_tag = 'fake_image'
         cloudsql_secrets = ['fakecloudsql_secret1', 'fakecloudsql_secret2']
         django_secrets = ['fakedjango_app_secret1', 'fakedjango_app_secret2']
-        self._generator.generate_new(self._project_dir, project_name,
-                                     project_id, instance_name, region,
-                                     image_tag, cloudsql_secrets,
-                                     django_secrets)
+        self._generator.generate_new(
+            self._project_dir, project_name, project_id, instance_name, region,
+            image_tag, cloudsql_secrets, django_secrets)
 
         yaml_file_path = os.path.join(self._project_dir, project_name + '.yaml')
         with open(yaml_file_path) as yaml_file:
@@ -491,21 +489,21 @@ class DjangoSourceFileGeneratorTest(FileGeneratorTest):
     def test_generate_all_source_files(self):
         project_id = project_name = 'test_generate_all_source_file'
         app_name = 'polls'
-        self._generator.generate_new(
-            project_id, project_name, app_name, self._project_dir,
-            'fake_db_user', 'fake_db_password')
+        self._generator.generate_new(project_id, project_name, app_name,
+                                     self._project_dir, 'fake_db_user',
+                                     'fake_db_password')
         self._test_project_structure(project_name, app_name, self._project_dir)
 
     def test_delete_existing_files(self):
         project_id = project_name = 'test_delete_existing_files1'
         app_name = 'polls1'
-        self._generator.generate_new(
-            project_id, project_name, app_name, self._project_dir,
-            'fake_db_user', 'fake_db_password')
+        self._generator.generate_new(project_id, project_name, app_name,
+                                     self._project_dir, 'fake_db_user',
+                                     'fake_db_password')
         project_id = project_name = 'test_delete_existing_files2'
-        self._generator.generate_new(
-            project_id, project_name, app_name, self._project_dir,
-            'fake_db_user', 'fake_db_password')
+        self._generator.generate_new(project_id, project_name, app_name,
+                                     self._project_dir, 'fake_db_user',
+                                     'fake_db_password')
         self._test_project_structure(project_name, app_name, self._project_dir)
         files_list = os.listdir(os.path.join(self._project_dir, project_name))
         self.assertNotIn(project_name, files_list)
@@ -517,9 +515,9 @@ class DjangoSourceFileGeneratorTest(FileGeneratorTest):
         # Test generating Django files at the same place multiple times.
         # This should not throw exceptions.
         for _ in range(3):
-            self._generator.generate_new(
-                project_id, project_name, app_name, self._project_dir,
-                'fake_db_user', 'fake_db_password')
+            self._generator.generate_new(project_id, project_name, app_name,
+                                         self._project_dir, 'fake_db_user',
+                                         'fake_db_password')
         self._test_project_structure(project_name, app_name, self._project_dir)
 
     def test_file_generation_directory_not_exist(self):
@@ -527,9 +525,9 @@ class DjangoSourceFileGeneratorTest(FileGeneratorTest):
         app_name = 'polls'
 
         project_dir = os.path.join(self._project_dir, 'dir_not_exist')
-        self._generator.generate_new(
-            project_id, project_name, app_name, project_dir, 'fake_db_user',
-            'fake_db_password')
+        self._generator.generate_new(project_id, project_name, app_name,
+                                     project_dir, 'fake_db_user',
+                                     'fake_db_password')
         self._test_project_structure(project_name, app_name, project_dir)
 
     def test_generate_missing_source_files(self):
@@ -540,10 +538,6 @@ class DjangoSourceFileGeneratorTest(FileGeneratorTest):
         os.mkdir(existing_app_path)
         management.call_command('startapp', 'existing_app', existing_app_path)
         self._generator.generate_from_existing(
-            project_id,
-            project_name,
-            app_name,
-            self._project_dir,
-            'fake_db_user',
-            'fake_db_password')
+            project_id, project_name, app_name, self._project_dir,
+            'fake_db_user', 'fake_db_password')
         self._test_project_structure(project_name, app_name, self._project_dir)
