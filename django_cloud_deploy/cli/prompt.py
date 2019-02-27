@@ -1190,7 +1190,6 @@ class RootPrompt(object):
         elif command == Command.CLOUDIFY:
             prompt_order = self.CLOUDIFY_PROMPT_ORDER
 
-
         total_steps = len(prompt_order) + 1
         step_template = '<b>[{}/{}]</b>'
         first_step = step_template.format(1, total_steps)
