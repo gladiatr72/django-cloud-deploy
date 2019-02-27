@@ -419,7 +419,11 @@ class _AppEngineFileGenerator(_Jinja2FileGenerator):
 class _DependencyFileGenerator(_Jinja2FileGenerator):
     """Generate dependencis needed by Django project."""
 
-    _FILE = 'requirements.txt'
+    _REQUIREMENTS_GOOGLE = 'requirements-google.txt'
+    _REQUIREMENTS = 'requirements.txt'
+
+    # How to rename user's existing requirements.txt
+    _REQUIREMENTS_USER_RENAME = 'requirements-user.txt'
 
     def generate_new(self, project_dir: str):
         """Generate requirements.txt.
@@ -432,14 +436,71 @@ class _DependencyFileGenerator(_Jinja2FileGenerator):
 
         # TODO: Find a way to determine the correct package version
         # instead of hardcoding everything.
-        template_path = os.path.join(self._get_template_folder_path(),
-                                     self._FILE)
-        output_path = os.path.join(project_dir, self._FILE)
-        self._render_file(template_path, output_path)
+        self._generate_requirements_google(project_dir)
+        self._generate_requirements(project_dir)
 
     def generate_from_existing(self, project_dir: str):
-        # TODO: Handle generation based on existing requirements.txt
-        self.generate_new(project_dir)
+        """Generate requirements.txt.
+
+        Dependencies are hardcoded.
+
+        Args:
+            project_dir: The destination directory path to put requirements.txt.
+        """
+
+        self._generate_requirements_google(project_dir)
+        requirements_path = self._guess_requirements_path(project_dir)
+        absolute_requirements_path = os.path.join(
+            project_dir, requirements_path)
+
+        # Rename user's existing requirements.txt to requirements-user.txt
+        # This is because app engine requires a file named exactly
+        # "requirements.txt" to exist and contain all dependencies.
+        if requirements_path:
+            requirements_output_path = os.path.join(
+                project_dir, self._REQUIREMENTS_USER_RENAME)
+            os.replace(absolute_requirements_path, requirements_output_path)
+        self._generate_requirements(project_dir, requirements_path)
+
+    def _generate_requirements_google(self, project_dir: str):
+        """Generate requirements-google.txt.
+
+        This requirements file only contain dependencies required by admin
+        app overwrite.
+
+        Args:
+            project_dir: Absolute path of the directory to put requirements.txt.
+        """
+        template_path = os.path.join(self._get_template_folder_path(),
+                                     self._REQUIREMENTS_GOOGLE)
+        output_path = os.path.join(project_dir, self._REQUIREMENTS_GOOGLE)
+        self._render_file(template_path, output_path)
+
+    def _generate_requirements(self, project_dir: str,
+                               requirements_path: Optional[str] = None):
+        """Generate requirements.txt.
+
+        If requirements_path is provided, then this requirements file will
+        inherit from the provided requirements.txt.
+
+        Args:
+            project_dir: Absolute path of the directory to put requirements.txt.
+            requirements_path: Relative path of an existing requirements.txt.
+        """
+
+        template_path = os.path.join(self._get_template_folder_path(),
+                                     self._REQUIREMENTS)
+        output_path = os.path.join(project_dir, self._REQUIREMENTS)
+        self._render_file(template_path, output_path, options={
+            'requirements_path': requirements_path
+        })
+
+    def _guess_requirements_path(self, project_dir: str) -> str:
+        # TODO: Handle more complex cases
+        files_list = os.listdir(project_dir)
+        if self._REQUIREMENTS in files_list:
+            return self._REQUIREMENTS
+        return ''
 
 
 class _YAMLFileGenerator(_Jinja2FileGenerator):
