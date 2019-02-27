@@ -18,13 +18,16 @@ See https://cloud.google.com/sql/docs/
 
 import contextlib
 import signal
+import shutil
 import time
 from typing import Optional
 
 from django import db
 from django.core import management
 from django_cloud_deploy import crash_handling
+
 import pexpect
+from pexpect import popen_spawn
 
 from googleapiclient import discovery
 from googleapiclient import errors
@@ -187,7 +190,7 @@ class DatabaseClient(object):
     def with_cloud_sql_proxy(self,
                              project_id: str,
                              instance_name: str,
-                             cloud_sql_proxy_path: str = 'cloud_sql_proxy',
+                             cloud_sql_proxy_path: Optional[str] = None,
                              region: str = 'us-west1',
                              port: int = 5432):
         """A context manager to run and kill cloud sql proxy subprocesses.
@@ -217,7 +220,10 @@ class DatabaseClient(object):
             project_id, region, instance_name)
         instance_flag = '-instances={}=tcp:{}'.format(
             instance_connection_string, port)
-        process = pexpect.spawn(cloud_sql_proxy_path, args=[instance_flag])
+        if cloud_sql_proxy_path is None:
+            cloud_sql_proxy_path = shutil.which('cloud_sql_proxy')
+            assert cloud_sql_proxy_path, 'could not find cloud_sql_proxy_path'
+        process = popen_spawn.PopenSpawn([cloud_sql_proxy_path, instance_flag])
         try:
             # Make sure cloud sql proxy is started before doing the real work
             process.expect('Ready for new connections', timeout=5)
@@ -306,6 +312,14 @@ class DatabaseClient(object):
             # This can only be imported after django.setup() is called
             try:
                 from django.contrib.auth.models import User
+
+                # Check whether the super user we want to create exist or not
+                # If a superuser with the same name already exist, we will skip
+                # creation
+                users = User.objects.filter(username=superuser_name)
+                for user in users:
+                    if user.is_superuser:
+                        return
                 User.objects.create_superuser(
                     username=superuser_name,
                     email=superuser_email,
