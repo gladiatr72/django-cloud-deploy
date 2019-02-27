@@ -56,7 +56,7 @@ def main(args: argparse.Namespace, console: io.IO = io.ConsoleIO()):
     # giving us another bit of information that we can automatically retrieve
     # It will be rare if they are updating, that they do not have the
     # requirements.
-    django_dir = actual_parameters['django_directory_path']
+    django_dir = actual_parameters['django_directory_path_update']
     config_obj = config.Configuration(django_dir)
     backend = config_obj.get('backend')
     if not backend:
