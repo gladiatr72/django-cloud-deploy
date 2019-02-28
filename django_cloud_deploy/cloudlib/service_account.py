@@ -144,7 +144,25 @@ class ServiceAccountClient(object):
         body = {'policy': policy}
         request = self._cloudresourcemanager_service.projects().setIamPolicy(
             resource=project_id, body=body)
-        response = request.execute()
+
+        max_retries = 3
+        tries = 0
+        while True:
+            try:
+                response = request.execute()
+                break
+            except errors.HttpError as e:
+                if e.resp.status == 409:
+                    # Most likely this error happens when concurrent changes are
+                    # made to iam policy change. We might be able to make this
+                    # iam change when trying again.
+                    if tries < max_retries:
+                        pass
+                    else:
+                        raise
+                else:
+                    raise
+            tries += 1
 
         # When the api call succeed, the response is a Policy object.
         # See
