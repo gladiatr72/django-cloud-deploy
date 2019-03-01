@@ -21,6 +21,7 @@ https://cloud.google.com/resource-manager/reference/rest/
 import base64
 from typing import List
 
+import backoff
 from googleapiclient import discovery
 from googleapiclient import errors
 
@@ -85,6 +86,21 @@ class ServiceAccountClient(object):
         policy['bindings'].append(new_bindings)
         return policy
 
+    @staticmethod
+    def _not_conflict_code(code: int) -> bool:
+        return code != 409
+
+    @staticmethod
+    @backoff.on_exception(backoff.expo, errors.HttpError, max_tries=3,
+                          giveup=_not_conflict_code)
+    def _request_with_retry(request):
+        # This function is used when changing iam policy.
+        # Most likely errors.HttpError with error code 409 happens when
+        # concurrent changes are made to iam policy change. We might be able to
+        # make this iam change when trying again.
+        # When giveup event happens, the exception is reraised.
+        request.execute()
+
     def create_service_account(self, project_id: str, service_account_id: str,
                                service_account_name: str, roles: List[str]):
         """Create a service account and assign it with the given roles.
@@ -145,24 +161,7 @@ class ServiceAccountClient(object):
         request = self._cloudresourcemanager_service.projects().setIamPolicy(
             resource=project_id, body=body)
 
-        max_retries = 3
-        tries = 0
-        while True:
-            try:
-                response = request.execute()
-                break
-            except errors.HttpError as e:
-                if e.resp.status == 409:
-                    # Most likely this error happens when concurrent changes are
-                    # made to iam policy change. We might be able to make this
-                    # iam change when trying again.
-                    if tries < max_retries:
-                        pass
-                    else:
-                        raise
-                else:
-                    raise
-            tries += 1
+        self._request_with_retry(request)
 
         # When the api call succeed, the response is a Policy object.
         # See
