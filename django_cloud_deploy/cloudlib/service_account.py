@@ -91,15 +91,15 @@ class ServiceAccountClient(object):
         return code != 409
 
     @staticmethod
-    @backoff.on_exception(backoff.expo, errors.HttpError, max_tries=3,
-                          giveup=_not_conflict_code)
+    @backoff.on_exception(
+        backoff.expo, errors.HttpError, max_tries=3, giveup=_not_conflict_code)
     def _request_with_retry(request):
         # This function is used when changing iam policy.
         # Most likely errors.HttpError with error code 409 happens when
         # concurrent changes are made to iam policy change. We might be able to
         # make this iam change when trying again.
         # When giveup event happens, the exception is reraised.
-        request.execute()
+        return request.execute()
 
     def create_service_account(self, project_id: str, service_account_id: str,
                                service_account_name: str, roles: List[str]):
@@ -161,7 +161,7 @@ class ServiceAccountClient(object):
         request = self._cloudresourcemanager_service.projects().setIamPolicy(
             resource=project_id, body=body)
 
-        self._request_with_retry(request)
+        response = self._request_with_retry(request)
 
         # When the api call succeed, the response is a Policy object.
         # See
