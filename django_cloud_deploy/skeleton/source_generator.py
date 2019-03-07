@@ -384,12 +384,6 @@ class _AppEngineFileGenerator(_Jinja2FileGenerator):
     _FILES = ('.gcloudignore', 'app.yaml')
 
     def generate_new(self, project_name: str, project_dir: str):
-        """Generate app.yaml and .gcloudignore.
-
-        Args:
-            project_name: The name of your Django project.
-            project_dir: The destination directory path to put Dockerfile.
-        """
         self._generate_ignore(project_dir)
         self._generate_yaml(project_dir, project_name)
 
@@ -404,11 +398,13 @@ class _AppEngineFileGenerator(_Jinja2FileGenerator):
         output_path = os.path.join(project_dir, file_name)
         self._render_file(template_path, output_path)
 
-    def _generate_yaml(self, project_dir: str, project_name: str):
+    def _generate_yaml(self, project_dir: str, project_name: str,
+                       service_name: str):
         """Generate a yaml file to define how to deploy a Django app to GAE."""
         file_name = 'app.yaml'
         options = {
-            'project_name': project_name
+            'project_name': project_name,
+            'service_name': service_name
         }
         template_path = os.path.join(self._get_template_folder_path(),
                                      file_name)
@@ -571,7 +567,8 @@ class DjangoSourceFileGenerator(_FileGenerator):
                      instance_name: Optional[str] = None,
                      database_name: Optional[str] = None,
                      region: Optional[str] = 'us-west1',
-                     image_tag: Optional[str] = None):
+                     image_tag: Optional[str] = None,
+                     service_name: Optional[str] = None):
         """Generate all source files of a Django app to be deployed to GCP.
 
         Args:
@@ -597,6 +594,8 @@ class DjangoSourceFileGenerator(_FileGenerator):
             database_name: Name of your cloud database.
             region: Where to host the Django project.
             image_tag: A customized docker image tag used in integration tests.
+            service_name: Name of App engine services. This is helpful in e2e
+                test. See https://cloud.google.com/appengine/docs/standard/python/an-overview-of-app-engine#services
         """
 
         project_dir = os.path.abspath(os.path.expanduser(project_dir))
@@ -622,7 +621,8 @@ class DjangoSourceFileGenerator(_FileGenerator):
         self.yaml_file_generator.generate_new(
             project_dir, project_name, project_id, instance_name, region,
             image_tag, cloudsql_secrets, django_secrets)
-        self.app_engine_file_generator.generate_new(project_name, project_dir)
+        self.app_engine_file_generator.generate_new(
+            project_name, project_dir, service_name)
         self.setup_django_environment(
             project_dir=project_dir,
             project_name=project_name,
@@ -644,7 +644,8 @@ class DjangoSourceFileGenerator(_FileGenerator):
                                instance_name: Optional[str] = None,
                                database_name: Optional[str] = None,
                                region: Optional[str] = 'us-west1',
-                               image_tag: Optional[str] = None):
+                               image_tag: Optional[str] = None,
+                               service_name: Optional[str] = None):
         """Generate all source files of a Django app to be deployed to GCP.
 
         Args:
@@ -669,6 +670,8 @@ class DjangoSourceFileGenerator(_FileGenerator):
             database_name: Name of your cloud database.
             region: Where to host the Django project.
             image_tag: A customized docker image tag used in integration tests.
+            service_name: Name of App engine services. This is helpful in e2e
+                test. See https://cloud.google.com/appengine/docs/standard/python/an-overview-of-app-engine#services
         """
         project_dir = os.path.abspath(os.path.expanduser(project_dir))
         instance_name = instance_name or project_name + '-instance'
@@ -689,7 +692,7 @@ class DjangoSourceFileGenerator(_FileGenerator):
             project_dir, project_name, project_id, instance_name, region,
             image_tag, cloudsql_secrets, django_secrets)
         self.app_engine_file_generator.generate_from_existing(
-            project_name, project_dir)
+            project_name, project_dir, service_name)
         self.setup_django_environment(
             project_dir=project_dir,
             project_name=project_name,
