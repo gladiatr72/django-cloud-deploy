@@ -925,46 +925,12 @@ class DjangoFilesystemPathUpdate(TemplatePrompt):
                 ).format(s))
 
 
-class DjangoFilesystemPathCloudify(TemplatePrompt):
+class DjangoFilesystemPathCloudify(StringTemplatePrompt):
     """Allow the user to indicate the file system path for their project."""
 
     PARAMETER = 'django_directory_path_cloudify'
-
-    def _ask_for_directory(self, console, step, args) -> str:
-        msg = ('{} Enter the directory of the Django project you want to '
-               'deploy: ').format(step)
-
-        return _ask_prompt(msg, console)
-
-    def prompt(self, console: io.IO, step: str,
-               args: Dict[str, Any]) -> Dict[str, Any]:
-        """Extracts user arguments through the command-line.
-
-        Args:
-            console: Object to use for user I/O.
-            step: Message to present to user regarding what step they are on.
-            args: Dictionary holding prompts answered by user and set up
-                command-line arguments.
-
-        Returns:
-            A Copy of args + the new parameter collected.
-        """
-        new_args = copy.deepcopy(args)
-        if self._is_valid_passed_arg(console, step, args.get(self.PARAMETER),
-                                     self._validate):
-            return new_args
-
-        while True:
-            directory = self._ask_for_directory(console, step, args)
-            try:
-                self._validate(directory)
-            except ValueError as e:
-                console.error(e)
-                continue
-            break
-
-        new_args[self.PARAMETER] = directory
-        return new_args
+    MESSAGE = ('{} Enter the directory of the Django project you want to '
+               'deploy: ')
 
     def _validate(self, s: str):
         """Validates that a string is a valid Django project path.
