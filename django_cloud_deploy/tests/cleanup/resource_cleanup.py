@@ -86,7 +86,7 @@ class GCPResourceCleanUp(test_base.ResourceCleanUp):
         iam_service = discovery.build(
             'iam', 'v1', credentials=self.credentials)
 
-    def test_resoucr_cleanup(self):
+    def test_resource_cleanup(self):
         """This is not a test, but cleans up test related resources."""
         self.delete_expired_clusters()
         self.delete_expired_buckets()
