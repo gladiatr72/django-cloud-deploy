@@ -143,9 +143,7 @@ class DatabaseClient(object):
         # See:
         # https://cloud.google.com/sql/docs/mysql/admin-api/v1beta4/databases/insert
         request = self._sqladmin_service.databases().get(
-            project=project_id,
-            instance=instance,
-            database=database)
+            project=project_id, instance=instance, database=database)
         try:
             response = request.execute()
         except errors.HttpError as e:
