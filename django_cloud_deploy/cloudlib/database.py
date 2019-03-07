@@ -146,6 +146,11 @@ class DatabaseClient(object):
             project=project_id, instance=instance, database=database)
         try:
             response = request.execute()
+
+            # This means the database already exist. In this case we do not need
+            # to create the same database again.
+            if 'name' in response:
+                return
         except errors.HttpError as e:
             if e.resp.status == 404:
                 # The database we would like to create does not exist yet. This
