@@ -14,7 +14,6 @@
 
 """Generate source files of a django app ready to be deployed to GKE."""
 
-import abc
 import os
 import shutil
 import sys
@@ -27,14 +26,12 @@ from django_cloud_deploy import crash_handling
 import jinja2
 
 
-class _FileGenerator(abc.ABC):  # pytype: disable=ignored-abstractmethod
+class _FileGenerator(object):
     """An abstract class to generate files using templates."""
 
-    @abc.abstractmethod
     def generate_from_existing(self):
         """Generate source files from existing files."""
 
-    @abc.abstractmethod
     def generate_new(self):
         """Generate new source files."""
 
