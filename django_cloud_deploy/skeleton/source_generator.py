@@ -380,13 +380,15 @@ class _AppEngineFileGenerator(_Jinja2FileGenerator):
 
     _FILES = ('.gcloudignore', 'app.yaml')
 
-    def generate_new(self, project_name: str, project_dir: str):
+    def generate_new(self, project_name: str, project_dir: str,
+                     service_name: Optional[str] = 'default'):
         self._generate_ignore(project_dir)
-        self._generate_yaml(project_dir, project_name)
+        self._generate_yaml(project_dir, project_name, service_name)
 
-    def generate_from_existing(self, project_name: str, project_dir: str):
+    def generate_from_existing(self, project_name: str, project_dir: str,
+                               service_name: Optional[str] = 'default'):
         # TODO: Handle generation based on existing app.yaml
-        self.generate_new(project_name, project_dir)
+        self.generate_new(project_name, project_dir, service_name)
 
     def _generate_ignore(self, project_dir: str):
         file_name = '.gcloudignore'
