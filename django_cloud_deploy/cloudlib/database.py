@@ -142,6 +142,21 @@ class DatabaseClient(object):
         """
         # See:
         # https://cloud.google.com/sql/docs/mysql/admin-api/v1beta4/databases/insert
+        request = self._sqladmin_service.databases().get(
+            project=project_id,
+            instance=instance,
+            database=database)
+        try:
+            response = request.execute()
+        except errors.HttpError as e:
+            if e.resp.status == 404:
+                # The database we would like to create does not exist yet. This
+                # is what we want.
+                pass
+            else:
+                raise DatabaseError(
+                    ('Unexpected response when getting status of database '
+                     '{!r}: [{!r}]').format(database, response))
         request = self._sqladmin_service.databases().insert(
             project=project_id,
             instance=instance,
