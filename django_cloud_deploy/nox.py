@@ -98,5 +98,6 @@ def e2e_test(session, python_version):
 @nox.session
 def resource_cleanup(session):
     """Cleanup GCP resources used by tests."""
+    session.interpreter = 'python3.5'
     session.install(*PACKAGES)
     session.run('py.test', 'tests/cleanup')
