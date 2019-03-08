@@ -93,7 +93,6 @@ class GCPResourceCleanUp(test_base.ResourceCleanUp, test_base.ResourceList):
                 service_account_name = member.split('@')[0].split(':')[-1]
                 if self._should_delete(service_account_name):
                     binding['members'].remove(member)
-                    print(service_account_name)
 
         policy['bindings'] = [b for b in policy['bindings'] if b['members']]
         body = {'policy': policy}
