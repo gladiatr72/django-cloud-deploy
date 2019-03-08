@@ -71,10 +71,8 @@ class GCPResourceCleanUp(test_base.ResourceCleanUp, test_base.ResourceList):
 
     def delete_expired_service_accounts(self):
         iam_service = discovery.build('iam', 'v1', credentials=self.credentials)
-        count = 0
         for account_email in self.list_service_accounts(iam_service):
             account_name = account_email.split('@')[0]
-            count += 1
             if self._should_delete(account_name):
                 self._delete_service_account(account_email, iam_service)
 
