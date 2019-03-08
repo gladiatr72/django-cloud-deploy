@@ -267,8 +267,6 @@ class DatabaseClient(object):
         """
         with self.with_cloud_sql_proxy(project_id, instance_name,
                                        cloud_sql_proxy_path, region, port):
-            import pdb
-            pdb.set_trace()
             try:
                 # "makemigrations" will generate migration files based on
                 # definitions in models.py.
