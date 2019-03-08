@@ -201,7 +201,9 @@ class ResourceCleanUp(BaseTest):
             cluster_name: str,
             service: Optional[googleapiclient.discovery.Resource] = None):
         container_service = service or discovery.build(
-            'container', 'v1', credentials=self.credentials,
+            'container',
+            'v1',
+            credentials=self.credentials,
             cache_discovery=False)
         request = container_service.projects().zones().clusters().delete(
             projectId=self.project_id, zone=self.zone, clusterId=cluster_name)
@@ -253,7 +255,10 @@ class ResourceCleanUp(BaseTest):
             bucket_name: str,
             service: Optional[googleapiclient.discovery.Resource] = None):
         storage_service = service or discovery.build(
-            'storage', 'v1', credentials=self.credentials, cache_discovery=False)
+            'storage',
+            'v1',
+            credentials=self.credentials,
+            cache_discovery=False)
         self._delete_objects(bucket_name, storage_service)
         request = storage_service.buckets().delete(bucket=bucket_name)
         request.execute()
@@ -276,7 +281,9 @@ class ResourceCleanUp(BaseTest):
             roles: List[str],
             service: Optional[googleapiclient.discovery.Resource] = None):
         cloudresourcemanager_service = service or discovery.build(
-            'cloudresourcemanager', 'v1', credentials=self.credentials,
+            'cloudresourcemanager',
+            'v1',
+            credentials=self.credentials,
             cache_discovery=False)
         request = cloudresourcemanager_service.projects().getIamPolicy(
             resource=self.project_id)
@@ -300,7 +307,10 @@ class ResourceCleanUp(BaseTest):
             instance_name: str,
             service: Optional[googleapiclient.discovery.Resource] = None):
         sqladmin_service = service or discovery.build(
-            'sqladmin', 'v1beta4', credentials=self.credentials, cache_discovery=False)
+            'sqladmin',
+            'v1beta4',
+            credentials=self.credentials,
+            cache_discovery=False)
         request = sqladmin_service.instances().delete(
             instance=instance_name, project=self.project_id)
         request.execute()
@@ -311,7 +321,10 @@ class ResourceCleanUp(BaseTest):
             database_name: str,
             service: Optional[googleapiclient.discovery.Resource] = None):
         sqladmin_service = service or discovery.build(
-            'sqladmin', 'v1beta4', credentials=self.credentials, cache_discovery=False)
+            'sqladmin',
+            'v1beta4',
+            credentials=self.credentials,
+            cache_discovery=False)
         request = sqladmin_service.databases().delete(
             database=database_name,
             instance=instance_name,
