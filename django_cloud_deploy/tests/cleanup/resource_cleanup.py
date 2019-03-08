@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITconsoleNS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissconsolens and
 # limitatconsolens under the License.
-"""End to end test for create and deploy new project."""
+"""Automatic deletion of resources more than 2 hours old on GCP."""
 
 import datetime
 import re
