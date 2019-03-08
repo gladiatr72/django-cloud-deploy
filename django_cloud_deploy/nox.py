@@ -38,7 +38,6 @@ PACKAGES = [
     'google-cloud-logging==1.8.0',
     'progressbar2>=3.38.0',
     'portpicker==1.2.0',
-    'iso8601==0.1.12',
 ]
 
 
@@ -94,3 +93,10 @@ def e2e_test(session, python_version):
     session.interpreter = 'python{}'.format(python_version)
     session.install(*PACKAGES)
     session.run('py.test', 'tests/e2e', '--timeout=1800')
+
+
+@nox.session
+def resource_cleanup(session):
+    """Cleanup GCP resources used by tests."""
+    session.install(*PACKAGES)
+    session.run('py.test', 'tests/cleanup')

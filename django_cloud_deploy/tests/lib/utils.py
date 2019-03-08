@@ -44,3 +44,20 @@ def get_resource_name(resource_type: str = '',
         for _ in range(hash_len)
     ])
     return delimiter.join([resource_type, timestamp, hash_str])
+
+
+def parse_creation_time(resource_name: str) -> datetime.datetime:
+    """Parse the resource creation time from its name.
+
+    The resource name should be in the format "TYPE-YYYYMMDD-HHMMSS-HASH", and
+    the time should be in utc.
+
+    Args:
+        resource_name: Name of the resource to parse.
+
+    Returns:
+        Creation time of the resource.
+    """
+
+    time_str = resource_name.split('-')[1]
+    return datetime.datetime.strptime(time_str, TIMESTAMP_FORMAT)

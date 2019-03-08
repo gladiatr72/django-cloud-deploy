@@ -100,25 +100,110 @@ class DjangoFileGeneratorTest(BaseTest):
             database_user=self.database_user,
             database_password=self.database_password,
             instance_name=self.instance_name,
-            database_name=self.database_name,
             image_tag=self.image_tag)
 
     def tearDown(self):
         shutil.rmtree(self.project_dir)
 
 
+class ResourceList(BaseTest):
+    """Class for listing GCP resources.
+
+    This class is needed by resource cleanup and workflow test.
+    """
+
+    def list_service_accounts(self, service=None):
+        service = service or discovery.build(
+            'iam', 'v1', credentials=self.credentials, cache_discovery=False)
+        resource_name = '/'.join(['projects', self.project_id])
+        request = service.projects().serviceAccounts().list(name=resource_name)
+        response = request.execute()
+        accounts = []
+        while True:
+            # Sometimes the response does not contain any accounts object, but
+            # only contains the nextPageToken. At this time, there are still
+            # more accounts in the remaining pages.
+            accounts += [
+                account['email'] for account in response.get('accounts', [])
+            ]
+            if 'nextPageToken' in response:
+                request = service.projects().serviceAccounts().list(
+                    name=resource_name, pageToken=response.get('nextPageToken'))
+                response = request.execute()
+            else:
+                break
+        return accounts
+
+    def list_clusters(self, service=None):
+        service = service or discovery.build(
+            'container',
+            'v1',
+            credentials=self.credentials,
+            cache_discovery=False)
+        request = service.projects().zones().clusters().list(
+            projectId=self.project_id, zone=self.zone)
+        response = request.execute()
+        return [
+            cluster.get('name', '') for cluster in response.get('clusters', [])
+        ]
+
+    def list_buckets(self, service=None):
+        service = service or discovery.build(
+            'storage',
+            'v1',
+            credentials=self.credentials,
+            cache_discovery=False)
+        request = service.buckets().list(project=self.project_id)
+        response = request.execute()
+        return [bucket.get('name', '') for bucket in response.get('items', [])]
+
+    def list_enabled_services(self, service_usage_service=None):
+        service_usage_service = service_usage_service or discovery.build(
+            'serviceusage',
+            'v1',
+            credentials=self.credentials,
+            cache_discovery=False)
+        parent = '/'.join(['projects', self.project_id])
+        request = service_usage_service.services().list(
+            parent=parent, filter='state:ENABLED')
+        response = request.execute()
+        return [service['config']['name'] for service in response['services']]
+
+    def list_instances(self, service=None):
+        service = service or discovery.build(
+            'sqladmin',
+            'v1beta4',
+            cache_discovery=False,
+            credentials=self.credentials)
+        request = service.instances().list(project=self.project_id)
+        response = request.execute()
+        instances = [item['name'] for item in response['items']]
+        return instances
+
+    def list_databases(self, instance_name, service=None):
+        service = service or discovery.build(
+            'sqladmin',
+            'v1beta4',
+            cache_discovery=False,
+            credentials=self.credentials)
+        request = service.databases().list(
+            project=self.project_id, instance=instance_name)
+        response = request.execute()
+        databases = [item['name'] for item in response['items']]
+        return databases
+
+
 class ResourceCleanUp(BaseTest):
     """Class for test cases which need resource cleaning up."""
 
     def _delete_cluster(
-            self, cluster_name: str,
+            self,
+            cluster_name: str,
             service: Optional[googleapiclient.discovery.Resource] = None):
         container_service = service or discovery.build(
             'container', 'v1', credentials=self.credentials)
         request = container_service.projects().zones().clusters().delete(
-            projectId=self.project_id,
-            zone=self.zone,
-            clusterId=cluster_name)
+            projectId=self.project_id, zone=self.zone, clusterId=cluster_name)
         request.execute()
 
     @contextlib.contextmanager
@@ -160,7 +245,8 @@ class ResourceCleanUp(BaseTest):
                 request.execute()
 
     def _delete_bucket(
-            self, bucket_name: str,
+            self,
+            bucket_name: str,
             service: Optional[googleapiclient.discovery.Resource] = None):
         storage_service = service or discovery.build(
             'storage', 'v1', credentials=self.credentials)
@@ -169,7 +255,8 @@ class ResourceCleanUp(BaseTest):
         request.execute()
 
     def _delete_service_account(
-            self, service_account_email: str,
+            self,
+            service_account_email: str,
             service: Optional[googleapiclient.discovery.Resource] = None):
         iam_service = service or discovery.build(
             'iam', 'v1', credentials=self.credentials)
@@ -180,7 +267,9 @@ class ResourceCleanUp(BaseTest):
         request.execute()
 
     def _reset_iam_policy(
-            self, member: str, roles: List[str],
+            self,
+            member: str,
+            roles: List[str],
             service: Optional[googleapiclient.discovery.Resource] = None):
         cloudresourcemanager_service = service or discovery.build(
             'cloudresourcemanager', 'v1', credentials=self.credentials)
@@ -202,7 +291,8 @@ class ResourceCleanUp(BaseTest):
         request.execute()
 
     def _clean_up_sql_instance(
-            self, instance_name: str,
+            self,
+            instance_name: str,
             service: Optional[googleapiclient.discovery.Resource] = None):
         sqladmin_service = service or discovery.build(
             'sqladmin', 'v1beta4', credentials=self.credentials)
@@ -211,7 +301,9 @@ class ResourceCleanUp(BaseTest):
         request.execute()
 
     def _clean_up_database(
-            self, instance_name: str, database_name: str,
+            self,
+            instance_name: str,
+            database_name: str,
             service: Optional[googleapiclient.discovery.Resource] = None):
         sqladmin_service = service or discovery.build(
             'sqladmin', 'v1beta4', credentials=self.credentials)
