@@ -70,7 +70,9 @@ class GCPResourceCleanUp(test_base.ResourceCleanUp, test_base.ResourceList):
                 self._clean_up_sql_instance(instance_name, sqladmin_service)
 
     def delete_expired_service_accounts(self):
-        iam_service = discovery.build('iam', 'v1', credentials=self.credentials)
+        iam_service = discovery.build(
+            'iam', 'v1', credentials=self.credentials,
+            cache_discovery=False)
         for account_email in self.list_service_accounts(iam_service):
             account_name = account_email.split('@')[0]
             if self._should_delete(account_name):
@@ -78,7 +80,8 @@ class GCPResourceCleanUp(test_base.ResourceCleanUp, test_base.ResourceList):
 
     def reset_expired_iam_policy(self):
         cloudresourcemanager_service = discovery.build(
-            'cloudresourcemanager', 'v1', credentials=self.credentials)
+            'cloudresourcemanager', 'v1', credentials=self.credentials,
+            cache_discovery=False)
         request = cloudresourcemanager_service.projects().getIamPolicy(
             resource=self.project_id)
         policy = request.execute()
